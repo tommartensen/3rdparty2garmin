@@ -40,11 +40,35 @@ Notes:
 - The `Platform: "Android"` and `Action: 1001` fields appear required.
 - `CorrelationId` / `DeviceId` are random UUIDs per login — no device
   registration is validated server-side.
-- A `RefreshToken` is returned but there is **no known refresh flow**;
-  the reference client simply reuses the access token until the API
-  returns 401, then the user re-logs in. 3rdparty2garmin mirrors this:
-  on 401 the UI shows "MyWhoosh session expired — reconnect".
-- Token lifetime is unknown but long (days to weeks in practice).
+- Both tokens are JWTs with an `exp` claim (no `iat`). Lifetimes:
+  **15 days** for the access token, **60 days** for the refresh token.
+- The reference client ignored the `RefreshToken` and made the user
+  re-log in on 401. 3rdparty2garmin refreshes instead (see below).
+
+## Token Refresh
+
+Not in the mywhoosh-community/mywhoosh-api README; documented only in
+its open PR #2 (captured from the desktop app's traffic). Verified
+against the live API on 2026-11-20:
+
+```
+GET https://services.mywhoosh.com/http-service/api/tokens/generate
+Authorization: Bearer <refresh_token>
+```
+
+Response: `{"AccessToken", "RefreshToken", "Username", "WhooshId"}`.
+
+Observed behavior:
+- No request body, `Action`, or `DeviceId` needed.
+- Both tokens are rotated, and **both expiries restart from the
+  refresh time** (sliding window): refreshing at least every 60 days
+  should keep a session alive without the password.
+- Old tokens are **not revoked**: the old refresh token can still be
+  used to refresh again, and the old access token still works.
+- Passing the access token instead of the refresh token returns
+  **HTTP 426** with `{"error_message": ...}`, not 401. The response
+  for an *expired* refresh token is untested — treat any non-200 as
+  "re-login required".
 
 ## Activity Listing
 
@@ -112,7 +136,15 @@ with `StripTemperature`, set per source by the upload handler.
   per call rather than held in client state or cached on disk (the
   reference app cached them in `~/.mywhoosh2garmin/`). Session tokens
   live in the `mywhoosh_tokens` SQLite table, one row per user, like
-  `garmin_tokens`.
+  `garmin_tokens`. The access token's expiry is read from its `exp`
+  claim rather than stored.
+- Token refresh (`withMyWhooshToken` in `internal/handlers/mywhoosh.go`):
+  every MyWhoosh call refreshes first if the access token expires
+  within a day, and on a 401 refreshes once and retries. If the refresh
+  token is rejected (any 4xx), the stored tokens are deleted so the UI
+  shows "Connect" again; 5xx/network errors keep them. Rows stored
+  before refresh support have an empty `refresh_token` and are deleted
+  on their first 401, requiring one re-login.
 - MyWhoosh activities are stored in the same generalized `workouts`
   table as Wahoo workouts, keyed by `(user_id, source, external_id)`.
   `file_url` holds the source-specific download reference: a URL for

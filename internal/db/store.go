@@ -107,12 +107,34 @@ func (s *Store) migrate() error {
 		);
 
 		CREATE TABLE IF NOT EXISTS mywhoosh_tokens (
-			user_id      INTEGER PRIMARY KEY REFERENCES users(id),
-			access_token TEXT    NOT NULL,
-			whoosh_id    TEXT
+			user_id       INTEGER PRIMARY KEY REFERENCES users(id),
+			access_token  TEXT    NOT NULL,
+			refresh_token TEXT    NOT NULL DEFAULT '',
+			whoosh_id     TEXT
 		);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.migrateMyWhooshRefreshToken()
+}
+
+// migrateMyWhooshRefreshToken adds the refresh_token column to
+// mywhoosh_tokens tables created before token refresh was supported.
+// Existing rows get an empty refresh token and need one re-login.
+func (s *Store) migrateMyWhooshRefreshToken() error {
+	var hasColumn int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('mywhoosh_tokens') WHERE name = 'refresh_token'`).Scan(&hasColumn)
+	if err != nil {
+		return fmt.Errorf("inspect mywhoosh_tokens schema: %w", err)
+	}
+	if hasColumn > 0 {
+		return nil
+	}
+	if _, err := s.db.Exec(`ALTER TABLE mywhoosh_tokens ADD COLUMN refresh_token TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("add mywhoosh refresh_token column: %w", err)
+	}
+	return nil
 }
 
 // migrateWorkoutsSource migrates the original wahoo-only workouts table
@@ -396,25 +418,27 @@ func (s *Store) MarkGarminUploaded(userID int, source, externalID string) error 
 }
 
 type MyWhooshTokens struct {
-	AccessToken string
-	WhooshID    string
+	AccessToken  string
+	RefreshToken string // empty for sessions stored before refresh support
+	WhooshID     string
 }
 
-func (s *Store) SaveMyWhooshTokens(userID int, accessToken, whooshID string) error {
+func (s *Store) SaveMyWhooshTokens(userID int, t MyWhooshTokens) error {
 	_, err := s.db.Exec(`
-		INSERT INTO mywhoosh_tokens (user_id, access_token, whoosh_id)
-		VALUES (?, ?, ?)
+		INSERT INTO mywhoosh_tokens (user_id, access_token, refresh_token, whoosh_id)
+		VALUES (?, ?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET
 			access_token = excluded.access_token,
+			refresh_token = excluded.refresh_token,
 			whoosh_id = excluded.whoosh_id
-	`, userID, accessToken, whooshID)
+	`, userID, t.AccessToken, t.RefreshToken, t.WhooshID)
 	return err
 }
 
 func (s *Store) GetMyWhooshTokens(userID int) (*MyWhooshTokens, error) {
-	row := s.db.QueryRow("SELECT access_token, whoosh_id FROM mywhoosh_tokens WHERE user_id = ?", userID)
+	row := s.db.QueryRow("SELECT access_token, refresh_token, whoosh_id FROM mywhoosh_tokens WHERE user_id = ?", userID)
 	t := &MyWhooshTokens{}
-	if err := row.Scan(&t.AccessToken, &t.WhooshID); err != nil {
+	if err := row.Scan(&t.AccessToken, &t.RefreshToken, &t.WhooshID); err != nil {
 		return nil, fmt.Errorf("get mywhoosh tokens: %w", err)
 	}
 	return t, nil

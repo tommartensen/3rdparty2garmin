@@ -5,6 +5,8 @@
 package mywhoosh
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,11 +19,13 @@ import (
 
 const (
 	loginURL       = "https://services.mywhoosh.com/http-service/api/login"
+	refreshURL     = "https://services.mywhoosh.com/http-service/api/tokens/generate"
 	activitiesBase = "https://service14.mywhoosh.com/v2/"
 )
 
-// ErrUnauthorized indicates the stored MyWhoosh token was rejected and
-// the user needs to log in again (MyWhoosh has no refresh flow).
+// ErrUnauthorized indicates a MyWhoosh token was rejected. For the
+// access token, a refresh may help; for the refresh token, the user
+// needs to log in again.
 type ErrUnauthorized struct{}
 
 func (e ErrUnauthorized) Error() string { return "MyWhoosh session expired — reconnect to MyWhoosh" }
@@ -74,6 +78,34 @@ func (a *Activity) DurationSeconds() float64 {
 	return float64(h*3600 + m*60 + s)
 }
 
+// Tokens is a MyWhoosh session. Both tokens are JWTs; the access token
+// lasts 15 days, the refresh token 60 days (see research/mywhoosh-api.md).
+type Tokens struct {
+	AccessToken  string
+	RefreshToken string
+	WhooshID     string
+}
+
+// TokenExpiry returns the exp claim of a MyWhoosh JWT, or the zero time
+// if it cannot be decoded. The signature is not verified.
+func TokenExpiry(token string) time.Time {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return time.Time{}
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	if err != nil {
+		return time.Time{}
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp == 0 {
+		return time.Time{}
+	}
+	return time.Unix(claims.Exp, 0)
+}
+
 type Client struct {
 	httpClient *http.Client
 }
@@ -83,8 +115,8 @@ func NewClient() *Client {
 }
 
 // Login authenticates with MyWhoosh using email and password and
-// returns the bearer token and whoosh ID to be stored by the caller.
-func (c *Client) Login(email, password string) (accessToken, whooshID string, err error) {
+// returns the session tokens to be stored by the caller.
+func (c *Client) Login(email, password string) (*Tokens, error) {
 	payload := map[string]any{
 		"Username":      email,
 		"Password":      password,
@@ -97,15 +129,15 @@ func (c *Client) Login(email, password string) (accessToken, whooshID string, er
 
 	jsonBody, err := json.Marshal(payload)
 	if err != nil {
-		return "", "", fmt.Errorf("marshal login payload: %w", err)
+		return nil, fmt.Errorf("marshal login payload: %w", err)
 	}
 
-	body, status, err := c.postJSON(loginURL, "", jsonBody)
+	body, status, err := c.do(http.MethodPost, loginURL, "", jsonBody)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 	if status >= 400 {
-		return "", "", fmt.Errorf("login failed (HTTP %d): %s", status, truncate(body))
+		return nil, fmt.Errorf("login failed (HTTP %d): %s", status, truncate(body))
 	}
 
 	var result struct {
@@ -116,20 +148,51 @@ func (c *Client) Login(email, password string) (accessToken, whooshID string, er
 		WhooshID     string `json:"WhooshId"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", "", fmt.Errorf("parse login response: %w", err)
+		return nil, fmt.Errorf("parse login response: %w", err)
 	}
 	if !result.Success {
 		msg := result.Message
 		if msg == "" {
 			msg = "unknown error"
 		}
-		return "", "", fmt.Errorf("login failed: %s", msg)
+		return nil, fmt.Errorf("login failed: %s", msg)
 	}
 	if result.AccessToken == "" {
-		return "", "", fmt.Errorf("login failed: no access token in response")
+		return nil, fmt.Errorf("login failed: no access token in response")
 	}
 
-	return result.AccessToken, result.WhooshID, nil
+	return &Tokens{AccessToken: result.AccessToken, RefreshToken: result.RefreshToken, WhooshID: result.WhooshID}, nil
+}
+
+// Refresh exchanges a refresh token for a new session without the
+// password. Returns ErrUnauthorized if the refresh token is rejected
+// (expired or invalid) and the user needs to log in again; server
+// errors are returned as plain errors.
+func (c *Client) Refresh(refreshToken string) (*Tokens, error) {
+	body, status, err := c.do(http.MethodGet, refreshURL, refreshToken, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 500 {
+		return nil, fmt.Errorf("refresh failed (HTTP %d): %s", status, truncate(body))
+	}
+	// An invalid refresh token yields HTTP 426, not 401.
+	if status != http.StatusOK {
+		return nil, ErrUnauthorized{}
+	}
+
+	var result struct {
+		AccessToken  string `json:"AccessToken"`
+		RefreshToken string `json:"RefreshToken"`
+		WhooshID     string `json:"WhooshId"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parse refresh response: %w", err)
+	}
+	if result.AccessToken == "" || result.RefreshToken == "" {
+		return nil, fmt.Errorf("refresh failed: no tokens in response")
+	}
+	return &Tokens{AccessToken: result.AccessToken, RefreshToken: result.RefreshToken, WhooshID: result.WhooshID}, nil
 }
 
 // GetActivities fetches all activities, paginated. Returns newest first.
@@ -141,7 +204,7 @@ func (c *Client) GetActivities(token string) ([]Activity, error) {
 	for {
 		payload := fmt.Sprintf(`{"sortDate":"DESC","page":%d}`, page)
 
-		body, status, err := c.postJSON(activitiesURL, token, []byte(payload))
+		body, status, err := c.do(http.MethodPost, activitiesURL, token, []byte(payload))
 		if err != nil {
 			return nil, err
 		}
@@ -185,7 +248,7 @@ func (c *Client) DownloadFitFile(token, activityFileID string) ([]byte, error) {
 	downloadURL := activitiesBase + "rider/profile/download-activity-file"
 	payload := fmt.Sprintf(`{"fileId":"%s"}`, activityFileID)
 
-	body, status, err := c.postJSON(downloadURL, token, []byte(payload))
+	body, status, err := c.do(http.MethodPost, downloadURL, token, []byte(payload))
 	if err != nil {
 		return nil, err
 	}
@@ -223,14 +286,16 @@ func (c *Client) DownloadFitFile(token, activityFileID string) ([]byte, error) {
 	return fitData, nil
 }
 
-// postJSON posts a JSON body with an optional bearer token and returns
-// the response body and status code.
-func (c *Client) postJSON(url, token string, payload []byte) ([]byte, int, error) {
-	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(string(payload)))
+// do sends a request with an optional JSON body and bearer token and
+// returns the response body and status code.
+func (c *Client) do(method, url, token string, payload []byte) ([]byte, int, error) {
+	req, err := http.NewRequest(method, url, bytes.NewReader(payload))
 	if err != nil {
 		return nil, 0, fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

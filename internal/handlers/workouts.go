@@ -274,12 +274,15 @@ func (h *WorkoutHandler) refreshFromWahoo(r *http.Request, userID int) {
 }
 
 func (h *WorkoutHandler) refreshFromMyWhoosh(userID int) {
-	tokens, err := h.store.GetMyWhooshTokens(userID)
-	if err != nil {
-		return // not connected
+	var activities []mywhoosh.Activity
+	err := withMyWhooshToken(h.whoosh, h.store, userID, func(accessToken string) error {
+		var err error
+		activities, err = h.whoosh.GetActivities(accessToken)
+		return err
+	})
+	if errors.Is(err, errMyWhooshNotConnected) {
+		return
 	}
-
-	activities, err := h.whoosh.GetActivities(tokens.AccessToken)
 	if err != nil {
 		log.Printf("list activities from mywhoosh: %v", err)
 		return
@@ -325,15 +328,12 @@ func (h *WorkoutHandler) downloadFit(r *http.Request, userID int, source, fileRe
 	case db.SourceWahoo:
 		return h.client.DownloadFitFile(r.Context(), fileRef)
 	case db.SourceMyWhoosh:
-		tokens, err := h.store.GetMyWhooshTokens(userID)
-		if err != nil {
-			return nil, errors.New("MyWhoosh not connected — connect first")
-		}
-		data, err := h.whoosh.DownloadFitFile(tokens.AccessToken, fileRef)
-		var unauthorized mywhoosh.ErrUnauthorized
-		if errors.As(err, &unauthorized) {
-			return nil, errors.New("MyWhoosh session expired — reconnect to MyWhoosh")
-		}
+		var data []byte
+		err := withMyWhooshToken(h.whoosh, h.store, userID, func(accessToken string) error {
+			var err error
+			data, err = h.whoosh.DownloadFitFile(accessToken, fileRef)
+			return err
+		})
 		return data, err
 	default:
 		return nil, errors.New("unknown source: " + source)
