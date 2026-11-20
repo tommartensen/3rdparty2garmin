@@ -2,7 +2,7 @@
 
 ## Problem
 
-Activities uploaded to Garmin Connect from wahoo2garmin show up in the
+Activities uploaded to Garmin Connect from 3rdparty2garmin show up in the
 activity list, but Garmin's first-party analytics ignore them:
 
 - **Load / Load Focus** (acute & chronic training load)
@@ -20,7 +20,7 @@ FIT `file_id` message claims a **Garmin manufacturer**. Files from other
 manufacturers are imported as plain activities, but excluded from the
 physiological/fitness pipeline.
 
-Verified against a real workout stored in `wahoo2garmin.db`: Wahoo's
+Verified against a real workout stored in `3rdparty2garmin.db`: Wahoo's
 cloud-served FIT files carry
 
 ```
@@ -70,8 +70,8 @@ all 4845 records preserved, file size +0.4% from re-encoding.
 - Upload mechanics also turned out to matter: mywhoosh2garmin uses the
   device-sync upload (`POST /upload-service/upload`, multipart with
   filename — the path the Garmin Connect mobile app uses), while
-  wahoo2garmin originally used the import-style `POST /upload/fit` with
+  3rdparty2garmin originally used the import-style `POST /upload/fit` with
   a raw octet-stream body. An upload with spoofed identity but via the
   import endpoint still produced no intensity minutes (observed
-  2026-11-20), so wahoo2garmin was switched to the device-sync endpoint
+  2026-11-20), so 3rdparty2garmin was switched to the device-sync endpoint
   for parity. See garmin-connect-upload.md.

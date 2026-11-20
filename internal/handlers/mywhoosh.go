@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/tommartensen/wahoo2garmin/internal/db"
-	"github.com/tommartensen/wahoo2garmin/internal/mywhoosh"
+	"github.com/tommartensen/3rdparty2garmin/internal/db"
+	"github.com/tommartensen/3rdparty2garmin/internal/mywhoosh"
 )
 
 type MyWhooshHandler struct {
@@ -20,7 +20,7 @@ func NewMyWhooshHandler(client *mywhoosh.Client, store *db.Store, session *Sessi
 	return &MyWhooshHandler{client: client, store: store, session: session, tmpl: tmpl}
 }
 
-func (h *MyWhooshHandler) LoginForm(w http.ResponseWriter, r *http.Request) {
+func (h *MyWhooshHandler) LoginForm(w http.ResponseWriter, _ *http.Request) {
 	if err := h.tmpl.ExecuteTemplate(w, "mywhoosh_login.html", nil); err != nil {
 		log.Printf("render mywhoosh login: %v", err)
 	}

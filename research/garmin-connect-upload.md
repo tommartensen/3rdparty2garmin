@@ -98,7 +98,7 @@ Multipart field: "file" = <FIT file bytes>, filename="workout.fit"
 
 > **Note:** mywhoosh2garmin uploads via this endpoint and its activities
 > count toward intensity minutes / Load / Readiness; uploads via the
-> import-style `/upload/fit` endpoint below did not. wahoo2garmin was
+> import-style `/upload/fit` endpoint below did not. 3rdparty2garmin was
 > switched to this endpoint for parity (Nov 2026).
 
 ### Endpoint (import-style, does NOT forward to Strava)

@@ -11,9 +11,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/tommartensen/wahoo2garmin/internal/db"
-	"github.com/tommartensen/wahoo2garmin/internal/mywhoosh"
-	"github.com/tommartensen/wahoo2garmin/internal/wahoo"
+	"github.com/tommartensen/3rdparty2garmin/internal/db"
+	"github.com/tommartensen/3rdparty2garmin/internal/mywhoosh"
+	"github.com/tommartensen/3rdparty2garmin/internal/wahoo"
 
 	"golang.org/x/oauth2"
 )
@@ -420,5 +420,7 @@ func (h *WorkoutHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+externalID+".fit\"")
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		log.Printf("write fit download: %v", err)
+	}
 }

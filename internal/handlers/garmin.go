@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tommartensen/wahoo2garmin/internal/db"
-	"github.com/tommartensen/wahoo2garmin/internal/fit"
-	"github.com/tommartensen/wahoo2garmin/internal/garmin"
+	"github.com/tommartensen/3rdparty2garmin/internal/db"
+	"github.com/tommartensen/3rdparty2garmin/internal/fit"
+	"github.com/tommartensen/3rdparty2garmin/internal/garmin"
 )
 
 type GarminHandler struct {
@@ -23,7 +23,7 @@ func NewGarminHandler(store *db.Store, session *SessionManager, tmpl *template.T
 	return &GarminHandler{store: store, session: session, tmpl: tmpl}
 }
 
-func (h *GarminHandler) LoginForm(w http.ResponseWriter, r *http.Request) {
+func (h *GarminHandler) LoginForm(w http.ResponseWriter, _ *http.Request) {
 	if err := h.tmpl.ExecuteTemplate(w, "garmin_login.html", nil); err != nil {
 		log.Printf("render garmin login: %v", err)
 	}
@@ -83,7 +83,7 @@ func (h *GarminHandler) upload(userID int, source, externalID string) error {
 
 	tokens, err := h.store.GetGarminTokens(userID)
 	if err != nil {
-		return fmt.Errorf("Garmin not connected — connect first")
+		return errors.New("garmin not connected — connect first")
 	}
 
 	o1 := &garmin.OAuth1Token{Token: tokens.OAuth1Token, TokenSecret: tokens.OAuth1TokenSecret}
@@ -92,7 +92,7 @@ func (h *GarminHandler) upload(userID int, source, externalID string) error {
 	if o2.Expired() {
 		newO2, err := garmin.RefreshOAuth2(o1)
 		if err != nil {
-			return fmt.Errorf("Garmin token refresh failed — try reconnecting")
+			return errors.New("garmin token refresh failed — try reconnecting")
 		}
 		if err := h.store.UpdateGarminOAuth2(userID, newO2.AccessToken, newO2.RefreshToken, newO2.ExpiresAt); err != nil {
 			log.Printf("update garmin oauth2: %v", err)

@@ -60,7 +60,7 @@ func (s *ssoSession) get(reqURL string, useReferer bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	s.lastURL = resp.Request.URL.String()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -86,7 +86,7 @@ func (s *ssoSession) post(reqURL string, form url.Values, useReferer bool) (stri
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	s.lastURL = resp.Request.URL.String()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -199,7 +199,7 @@ func fetchConsumer() (*oauthConsumer, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("consumer fetch HTTP %d", resp.StatusCode)
 	}
@@ -233,7 +233,7 @@ func getOAuth1Token(consumer *oauthConsumer, ticket string) (*OAuth1Token, error
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -274,7 +274,7 @@ func exchangeOAuth2(consumer *oauthConsumer, o1 *OAuth1Token) (*OAuth2Token, err
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

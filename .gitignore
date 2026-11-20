@@ -11,7 +11,7 @@ key.pem
 *.db-wal
 
 # Go binary
-wahoo2garmin
+3rdparty2garmin
 
 # Database backups
 *.db.bak

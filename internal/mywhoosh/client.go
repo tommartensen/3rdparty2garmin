@@ -113,7 +113,7 @@ func (c *Client) Login(email, password string) (accessToken, whooshID string, er
 		Message      string `json:"Message"`
 		AccessToken  string `json:"AccessToken"`
 		RefreshToken string `json:"RefreshToken"`
-		WhooshId     string `json:"WhooshId"`
+		WhooshID     string `json:"WhooshId"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", "", fmt.Errorf("parse login response: %w", err)
@@ -129,7 +129,7 @@ func (c *Client) Login(email, password string) (accessToken, whooshID string, er
 		return "", "", fmt.Errorf("login failed: no access token in response")
 	}
 
-	return result.AccessToken, result.WhooshId, nil
+	return result.AccessToken, result.WhooshID, nil
 }
 
 // GetActivities fetches all activities, paginated. Returns newest first.
@@ -210,7 +210,7 @@ func (c *Client) DownloadFitFile(token, activityFileID string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch FIT file: %w", err)
 	}
-	defer fitResp.Body.Close()
+	defer func() { _ = fitResp.Body.Close() }()
 
 	fitData, err := io.ReadAll(fitResp.Body)
 	if err != nil {
@@ -239,7 +239,7 @@ func (c *Client) postJSON(url, token string, payload []byte) ([]byte, int, error
 	if err != nil {
 		return nil, 0, fmt.Errorf("request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

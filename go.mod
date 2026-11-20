@@ -1,4 +1,4 @@
-module github.com/tommartensen/wahoo2garmin
+module github.com/tommartensen/3rdparty2garmin
 
 go 1.26.7
 

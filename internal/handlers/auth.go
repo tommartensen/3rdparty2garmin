@@ -7,8 +7,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/tommartensen/wahoo2garmin/internal/db"
-	"github.com/tommartensen/wahoo2garmin/internal/wahoo"
+	"github.com/tommartensen/3rdparty2garmin/internal/db"
+	"github.com/tommartensen/3rdparty2garmin/internal/wahoo"
 )
 
 type AuthHandler struct {
@@ -22,7 +22,7 @@ func NewAuthHandler(client *wahoo.Client, store *db.Store, session *SessionManag
 	return &AuthHandler{client: client, store: store, session: session, tmpl: tmpl}
 }
 
-func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) Login(w http.ResponseWriter, _ *http.Request) {
 	state := randomState()
 	http.SetCookie(w, &http.Cookie{
 		Name:     "oauth_state",

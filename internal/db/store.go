@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 )
 
 // Workout sources.
@@ -23,20 +23,20 @@ type User struct {
 }
 
 type Workout struct {
-	ID                int
-	UserID            int
-	Source            string
-	ExternalID        string
-	Name              string
-	WorkoutType       string
-	CreatedAt         time.Time
-	DurationSeconds   float64
-	DistanceMeters    float64
-	Calories          float64
-	FileURL           string
-	HasFitFile        bool
-	SyncedAt          *time.Time
-	GarminUploadedAt  *time.Time
+	ID               int
+	UserID           int
+	Source           string
+	ExternalID       string
+	Name             string
+	WorkoutType      string
+	CreatedAt        time.Time
+	DurationSeconds  float64
+	DistanceMeters   float64
+	Calories         float64
+	FileURL          string
+	HasFitFile       bool
+	SyncedAt         *time.Time
+	GarminUploadedAt *time.Time
 }
 
 type Store struct {
@@ -133,7 +133,7 @@ func (s *Store) migrateWorkoutsSource() error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }() // no-op after Commit
 
 	_, err = tx.Exec(`
 		CREATE TABLE workouts_new (
@@ -305,7 +305,7 @@ func (s *Store) ListWorkouts(userID int, limit, offset int) ([]Workout, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list workouts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var workouts []Workout
 	for rows.Next() {

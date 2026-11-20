@@ -1,6 +1,6 @@
-# wahoo2garmin
+# 3rdparty2garmin
 
-Download workout FIT files from the Wahoo Cloud API.
+Sync workouts from third-party platforms (Wahoo, MyWhoosh) to Garmin Connect.
 
 ## Prerequisites
 
@@ -46,4 +46,4 @@ Open https://localhost:8080 in your browser (accept the self-signed certificate 
 3. Click **Sync** to download a workout's FIT file into the local database.
 4. Click **Download** to save the FIT file to your computer.
 
-Synced workouts persist across server restarts in `wahoo2garmin.db` (SQLite).
+Synced workouts persist across server restarts in `3rdparty2garmin.db` (SQLite).

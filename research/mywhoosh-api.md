@@ -42,7 +42,7 @@ Notes:
   registration is validated server-side.
 - A `RefreshToken` is returned but there is **no known refresh flow**;
   the reference client simply reuses the access token until the API
-  returns 401, then the user re-logs in. wahoo2garmin mirrors this:
+  returns 401, then the user re-logs in. 3rdparty2garmin mirrors this:
   on 401 the UI shows "MyWhoosh session expired — reconnect".
 - Token lifetime is unknown but long (days to weeks in practice).
 
@@ -106,7 +106,7 @@ virtual rides carry bogus temperature values. Wahoo files keep their
 (genuine) temperature. This is why `fit.Fix` takes an `Options` struct
 with `StripTemperature`, set per source by the upload handler.
 
-## Architecture in wahoo2garmin
+## Architecture in 3rdparty2garmin
 
 - `internal/mywhoosh` is a **stateless** client — tokens are passed in
   per call rather than held in client state or cached on disk (the

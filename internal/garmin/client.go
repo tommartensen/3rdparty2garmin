@@ -52,7 +52,7 @@ func UploadFIT(o2 *OAuth2Token, data []byte, filename string) error {
 	if err != nil {
 		return fmt.Errorf("upload: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 
 	switch resp.StatusCode {

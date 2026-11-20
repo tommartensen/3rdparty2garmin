@@ -9,10 +9,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/tommartensen/wahoo2garmin/internal/db"
-	"github.com/tommartensen/wahoo2garmin/internal/handlers"
-	"github.com/tommartensen/wahoo2garmin/internal/mywhoosh"
-	"github.com/tommartensen/wahoo2garmin/internal/wahoo"
+	"github.com/tommartensen/3rdparty2garmin/internal/db"
+	"github.com/tommartensen/3rdparty2garmin/internal/handlers"
+	"github.com/tommartensen/3rdparty2garmin/internal/mywhoosh"
+	"github.com/tommartensen/3rdparty2garmin/internal/wahoo"
 )
 
 func main() {
@@ -21,11 +21,10 @@ func main() {
 	clientID := requireEnv("WAHOO_CLIENT_ID")
 	clientSecret := requireEnv("WAHOO_CLIENT_SECRET")
 
-	store, err := db.New("wahoo2garmin.db")
+	store, err := db.New("3rdparty2garmin.db")
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
-	defer store.Close()
 
 	client := wahoo.NewClient(clientID, clientSecret, "https://localhost:8080")
 
@@ -68,9 +67,12 @@ func main() {
 	mux.HandleFunc("POST /workouts/{source}/{id}/upload", session.RequireAuth(garminHandler.Upload))
 
 	log.Println("starting server on https://localhost:8080")
-	if err := http.ListenAndServeTLS(":8080", "cert.pem", "key.pem", mux); err != nil {
-		log.Fatalf("server: %v", err)
+	err = http.ListenAndServeTLS(":8080", "cert.pem", "key.pem", mux)
+	// Close explicitly: log.Fatalf exits without running deferred calls.
+	if closeErr := store.Close(); closeErr != nil {
+		log.Printf("close database: %v", closeErr)
 	}
+	log.Fatalf("server: %v", err)
 }
 
 func loadEnv(path string) {
@@ -78,7 +80,7 @@ func loadEnv(path string) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -89,7 +91,9 @@ func loadEnv(path string) {
 		if !ok {
 			continue
 		}
-		os.Setenv(strings.TrimSpace(k), strings.TrimSpace(v))
+		if err := os.Setenv(strings.TrimSpace(k), strings.TrimSpace(v)); err != nil {
+			log.Printf("set %s from %s: %v", strings.TrimSpace(k), path, err)
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		log.Printf("reading %s: %v", path, err)

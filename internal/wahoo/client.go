@@ -53,7 +53,7 @@ func (c *Client) GetUser(ctx context.Context, token *oauth2.Token) (int, error) 
 	if err != nil {
 		return 0, fmt.Errorf("get user: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return 0, fmt.Errorf("get user: status %d: %s", resp.StatusCode, body)
@@ -191,17 +191,17 @@ func (c *Client) fetchPage(client *http.Client, page, perPage int) (*workoutsRes
 		return nil, fmt.Errorf("list workouts page %d: %w", page, err)
 	}
 	if resp.StatusCode == http.StatusTooManyRequests {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, nil
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("list workouts: status %d: %s", resp.StatusCode, body)
 	}
 	var wr workoutsResponse
 	err = json.NewDecoder(resp.Body).Decode(&wr)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("decode workouts page %d: %w", page, err)
 	}
@@ -271,7 +271,7 @@ func (c *Client) DownloadFitFile(ctx context.Context, fileURL string) ([]byte, e
 	if err != nil {
 		return nil, fmt.Errorf("download fit: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("download fit: status %d", resp.StatusCode)
 	}

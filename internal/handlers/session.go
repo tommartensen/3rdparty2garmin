@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const cookieName = "wahoo2garmin_session"
+const cookieName = "3rdparty2garmin_session"
 
 type SessionManager struct {
 	key []byte
