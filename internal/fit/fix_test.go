@@ -67,7 +67,7 @@ func TestFixSpoofsDeviceAndBackfillsAverages(t *testing.T) {
 		},
 	}
 
-	fixed, err := Fix(encodeActivity(t, act))
+	fixed, err := Fix(encodeActivity(t, act), Options{})
 	if err != nil {
 		t.Fatalf("Fix: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestFixKeepsValidAverages(t *testing.T) {
 		},
 	}
 
-	fixed, err := Fix(encodeActivity(t, act))
+	fixed, err := Fix(encodeActivity(t, act), Options{})
 	if err != nil {
 		t.Fatalf("Fix: %v", err)
 	}
@@ -130,5 +130,45 @@ func TestFixKeepsValidAverages(t *testing.T) {
 	sess := decodeActivity(t, fixed).Sessions[0]
 	if sess.AvgPower != 250 {
 		t.Errorf("avg power = %d, want 250 (valid average must be kept)", sess.AvgPower)
+	}
+}
+
+func TestFixTemperatureOption(t *testing.T) {
+	ts := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	newActivity := func() *filedef.Activity {
+		return &filedef.Activity{
+			FileId: mesgdef.FileId{
+				Type:         typedef.FileActivity,
+				TimeCreated:  ts,
+				Manufacturer: 32,
+				Product:      43,
+				SerialNumber: 262127974,
+			},
+			Sessions: []*mesgdef.Session{{
+				Timestamp:        ts.Add(time.Hour),
+				StartTime:        ts,
+				TotalElapsedTime: 3600000,
+				Sport:            typedef.SportCycling,
+			}},
+			Records: []*mesgdef.Record{
+				{Timestamp: ts, HeartRate: 150, Temperature: 21},
+			},
+		}
+	}
+
+	kept, err := Fix(encodeActivity(t, newActivity()), Options{})
+	if err != nil {
+		t.Fatalf("Fix: %v", err)
+	}
+	if temp := decodeActivity(t, kept).Records[0].Temperature; temp != 21 {
+		t.Errorf("temperature = %d, want 21 (Wahoo temperature must be kept)", temp)
+	}
+
+	stripped, err := Fix(encodeActivity(t, newActivity()), Options{StripTemperature: true})
+	if err != nil {
+		t.Fatalf("Fix: %v", err)
+	}
+	if temp := decodeActivity(t, stripped).Records[0].Temperature; temp != 0x7F {
+		t.Errorf("temperature = %d, want invalid (0x7F) for MyWhoosh files", temp)
 	}
 }

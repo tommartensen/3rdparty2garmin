@@ -6,36 +6,90 @@
     <button type="submit" class="btn btn-secondary btn-sm">Logout</button>
   </form>
 </header>
-<div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem;">
-  <a href="/workouts?refresh=1" class="btn btn-primary btn-sm">Refresh List</a>
-  <form method="POST" action="/workouts/sync-all" style="display:inline">
-    <button type="submit" class="btn btn-primary btn-sm">Sync from Wahoo</button>
-  </form>
+<div class="widgets">
+  <div class="widget">
+    <h2>🚴 MyWhoosh</h2>
+    <div class="actions">
+      {{if .MyWhooshConnected}}
+        <span class="badge badge-success">✅ Connected</span>
+        <form method="POST" action="/mywhoosh/disconnect" style="display:inline">
+          <button type="submit" class="btn btn-secondary btn-sm">🔌 Disconnect</button>
+        </form>
+      {{else}}
+        <a href="/mywhoosh/login" class="btn btn-primary btn-sm">🔗 Connect</a>
+      {{end}}
+    </div>
+  </div>
+  <div class="widget">
+    <h2>⌚ Garmin</h2>
+    <div class="actions">
+      {{if .GarminConnected}}
+        <span class="badge badge-success">✅ Connected</span>
+      {{else}}
+        <a href="/garmin/login" class="btn btn-primary btn-sm">🔗 Connect</a>
+      {{end}}
+    </div>
+  </div>
+  <div class="widget">
+    <h2>⚡ Actions</h2>
+    <div class="actions">
+      <a href="/workouts?refresh=1&{{.PageConfig.QueryString}}" class="btn btn-primary btn-sm">🔄 Refresh List</a>
+      <form method="POST" action="/workouts/sync-all" style="display:inline">
+        <input type="hidden" name="page" value="{{.PageConfig.Page}}">
+        <input type="hidden" name="size" value="{{.PageConfig.SizeParam}}">
+        <button type="submit" class="btn btn-primary btn-sm">⬇️ Sync All</button>
+      </form>
+      {{if .GarminConnected}}
+        <form method="POST" action="/workouts/upload-all" style="display:inline">
+          <input type="hidden" name="page" value="{{.PageConfig.Page}}">
+          <input type="hidden" name="size" value="{{.PageConfig.SizeParam}}">
+          <button type="submit" class="btn btn-primary btn-sm">⬆️ Upload All to Garmin</button>
+        </form>
+      {{else}}
+        <button disabled class="btn btn-secondary btn-sm">⬆️ Upload All to Garmin</button>
+      {{end}}
+    </div>
+  </div>
 </div>
-<div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
-  {{if .GarminConnected}}
-    <span class="badge badge-success">Garmin Connected</span>
-    <form method="POST" action="/workouts/upload-all" style="display:inline">
-      <button type="submit" class="btn btn-primary btn-sm">Upload All to Garmin</button>
-    </form>
-  {{else}}
-    <a href="/garmin/login" class="btn btn-primary btn-sm">Connect to Garmin</a>
-  {{end}}
-</div>
-<div style="display: flex; gap: 2rem; margin-bottom: 1.5rem; font-size: 0.9rem;">
-  <div><strong>{{.TotalWorkouts}}</strong> workouts in Wahoo</div>
-  <div><strong>{{.TotalSynced}}</strong> synced locally</div>
-  <div><strong>{{.TotalUploaded}}</strong> uploaded to Garmin</div>
+<div class="widget" style="flex-basis: 100%; margin-bottom: 1.5rem;">
+  <h2>📊 Stats</h2>
+  <div class="stats-row">
+    <div>
+      <div class="stat-value">{{.TotalWorkouts}}</div>
+      <div class="stat-label">Total workouts</div>
+    </div>
+    {{range .Donuts}}
+    <div>
+      <div class="donut">
+        <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="{{.Label}}: {{.Count}} of {{.Total}}">
+          <circle cx="60" cy="60" r="52" fill="none" stroke="#cde2fb" stroke-width="12"/>
+          <circle cx="60" cy="60" r="52" fill="none" stroke="#2a78d6" stroke-width="12"
+                  stroke-dasharray="{{printf "%.1f" .Dash}} {{printf "%.1f" .Circumference}}"
+                  {{if .RoundCap}}stroke-linecap="round"{{end}}
+                  transform="rotate(-90 60 60)">
+            <title>{{.Label}}: {{.Count}} of {{.Total}} ({{.Percent}}%)</title>
+          </circle>
+        </svg>
+        <div class="donut-center">
+          <span class="value">{{.Count}}</span>
+          <span class="percent">{{.Percent}}%</span>
+        </div>
+      </div>
+      <div class="donut-label">{{.Label}} <span style="color: #898781;">of {{.Total}}</span></div>
+    </div>
+    {{end}}
+  </div>
 </div>
 {{if .Workouts}}
 <table>
   <thead>
     <tr>
       <th>Date</th>
+      <th>Source</th>
       <th>Type</th>
       <th>Duration</th>
       <th>Distance</th>
-      <th>Sync from Wahoo</th>
+      <th>Sync</th>
       <th>Upload to Garmin</th>
     </tr>
   </thead>
@@ -43,6 +97,7 @@
     {{range .Workouts}}
     <tr>
       <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+      <td>{{if eq .Source "mywhoosh"}}<span class="badge">MyWhoosh</span>{{else}}<span class="badge">Wahoo</span>{{end}}</td>
       <td>{{if .WorkoutType}}{{.WorkoutType}}{{else}}&mdash;{{end}}</td>
       <td>{{fmtDuration .DurationSeconds}}</td>
       <td>{{printf "%.1f" (divf .DistanceMeters 1000)}} km</td>
@@ -50,7 +105,7 @@
         {{if .HasFitFile}}
           <span class="badge badge-success">Synced</span>
         {{else}}
-          <form method="POST" action="/workouts/{{.WahooID}}/sync" style="display:inline">
+          <form method="POST" action="/workouts/{{.Source}}/{{.ExternalID}}/sync" style="display:inline">
             <button type="submit" class="btn btn-primary btn-sm">Sync</button>
           </form>
         {{end}}
@@ -59,7 +114,7 @@
         {{if .GarminUploadedAt}}
           <button disabled class="btn btn-secondary btn-sm">Uploaded</button>
         {{else if and .HasFitFile $.GarminConnected}}
-          <form method="POST" action="/workouts/{{.WahooID}}/upload" style="display:inline">
+          <form method="POST" action="/workouts/{{.Source}}/{{.ExternalID}}/upload" style="display:inline">
             <button type="submit" class="btn btn-primary btn-sm">Upload</button>
           </form>
         {{else}}
@@ -71,6 +126,21 @@
   </tbody>
 </table>
 {{else}}
-<p>No workouts found. Make sure you have recorded workouts on your Wahoo device.</p>
+<p>No workouts found. Make sure you have recorded workouts on your Wahoo device or connected a MyWhoosh account.</p>
 {{end}}
+<div class="pagination" style="display: flex; align-items: center; gap: 0.75rem; margin-top: 1rem; font-size: 0.85rem;">
+  {{if .PageConfig.HasPrev}}
+    <a class="btn btn-secondary btn-sm" href="/workouts?page={{.PageConfig.PrevPage}}&size={{.PageConfig.SizeParam}}">← Prev</a>
+  {{end}}
+  <span>Page {{.PageConfig.Page}} of {{.PageConfig.TotalPages}}</span>
+  {{if .PageConfig.HasNext}}
+    <a class="btn btn-secondary btn-sm" href="/workouts?page={{.PageConfig.NextPage}}&size={{.PageConfig.SizeParam}}">Next →</a>
+  {{end}}
+  <span style="margin-left: auto;">Per page:
+    {{if eq .PageConfig.SizeParam "10"}}<strong>10</strong>{{else}}<a href="/workouts?page=1&size=10">10</a>{{end}} ·
+    {{if eq .PageConfig.SizeParam "25"}}<strong>25</strong>{{else}}<a href="/workouts?page=1&size=25">25</a>{{end}} ·
+    {{if eq .PageConfig.SizeParam "100"}}<strong>100</strong>{{else}}<a href="/workouts?page=1&size=100">100</a>{{end}} ·
+    {{if eq .PageConfig.SizeParam "all"}}<strong>All</strong>{{else}}<a href="/workouts?page=1&size=all">All</a>{{end}}
+  </span>
+</div>
 {{end}}

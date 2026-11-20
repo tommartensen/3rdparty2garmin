@@ -21,6 +21,7 @@ import (
 const (
 	uint16Invalid = uint16(0xFFFF)
 	uint8Invalid  = uint8(0xFF)
+	sint8Invalid  = int8(0x7F)
 )
 
 // Device spoofing constants.
@@ -30,10 +31,18 @@ const (
 	fakeSerialNumber   = uint32(3420897194)
 )
 
-// Fix decodes a Wahoo activity FIT file, backfills missing session
+// Options controls source-specific FIT processing.
+type Options struct {
+	// StripTemperature removes temperature from all records. MyWhoosh
+	// virtual rides carry bogus temperature values; Wahoo temperature
+	// readings are genuine and are kept.
+	StripTemperature bool
+}
+
+// Fix decodes a source activity FIT file, backfills missing session
 // averages from record data, spoofs the device identity as a Garmin
 // Fenix 6S, and returns the re-encoded file.
-func Fix(data []byte) ([]byte, error) {
+func Fix(data []byte, opts Options) ([]byte, error) {
 	lis := filedef.NewListener()
 	defer lis.Close()
 
@@ -54,6 +63,9 @@ func Fix(data []byte) ([]byte, error) {
 	var powers []uint16
 	var heartRates, cadences []uint8
 	for _, rec := range activity.Records {
+		if opts.StripTemperature {
+			rec.Temperature = sint8Invalid
+		}
 		if rec.Power != uint16Invalid {
 			powers = append(powers, rec.Power)
 		}

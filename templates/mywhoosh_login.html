@@ -1,0 +1,19 @@
+{{template "layout" .}}
+{{define "content"}}
+<header>
+  <h1>wahoo2garmin</h1>
+</header>
+<h2 style="margin-bottom: 1rem;">Connect MyWhoosh Account</h2>
+<form method="POST" action="/mywhoosh/login" style="max-width: 400px;">
+  <div style="margin-bottom: 1rem;">
+    <label for="email" style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Email</label>
+    <input type="email" id="email" name="email" required style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem;">
+  </div>
+  <div style="margin-bottom: 1rem;">
+    <label for="password" style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Password</label>
+    <input type="password" id="password" name="password" required style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem;">
+  </div>
+  <button type="submit" class="btn btn-primary">Connect</button>
+</form>
+<p style="margin-top: 1rem; font-size: 0.85rem; color: #666;">Your credentials are sent directly to MyWhoosh and are not stored — only the session token is kept.</p>
+{{end}}

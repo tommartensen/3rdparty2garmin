@@ -24,6 +24,21 @@
     th { background: #f8f9fa; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; color: #666; }
     .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; }
     .badge-success { background: #d4edda; color: #155724; }
+    .widgets { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .widget { flex: 1; min-width: 220px; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 0.75rem 1rem; }
+    .widget h2 { font-size: 0.85rem; text-transform: uppercase; color: #666; margin-bottom: 0.5rem; }
+    .widget .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .stats-row { display: flex; align-items: center; justify-content: center; gap: 3rem; flex-wrap: wrap; padding: 0.5rem 0.5rem 0.25rem; }
+    .stats-row > div { text-align: center; }
+    .stat-value { font-size: 2rem; font-weight: 600; color: #0b0b0b; line-height: 1.2; }
+    .stat-label { font-size: 0.85rem; color: #52514e; }
+    .donut { position: relative; width: 120px; height: 120px; flex: none; }
+    .donut svg { display: block; }
+    .donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+    .donut-center .value { font-size: 1.4rem; font-weight: 600; color: #0b0b0b; line-height: 1.2; }
+    .donut-center .percent { font-size: 0.8rem; color: #52514e; }
+    .donut-label { text-align: center; font-size: 0.85rem; color: #52514e; margin-top: 0.5rem; }
   </style>
 </head>
 <body>

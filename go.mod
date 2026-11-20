@@ -3,16 +3,16 @@ module github.com/tommartensen/wahoo2garmin
 go 1.26.7
 
 require (
+	github.com/dghubble/oauth1 v0.7.3
+	github.com/google/uuid v1.6.0
+	github.com/muktihari/fit v0.27.1
 	golang.org/x/oauth2 v0.38.0
 	modernc.org/sqlite v1.62.0
 )
 
 require (
-	github.com/dghubble/oauth1 v0.7.3 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/muktihari/fit v0.27.1 // indirect
 	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/sys v0.50.0 // indirect

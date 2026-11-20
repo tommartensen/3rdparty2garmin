@@ -12,3 +12,7 @@ key.pem
 
 # Go binary
 wahoo2garmin
+
+# Database backups
+*.db.bak
+*.db.bak-*
