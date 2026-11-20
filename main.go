@@ -1,0 +1,99 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"html/template"
+	"log"
+	"net/http"
+	"os"
+	"strings"
+
+	"github.com/tommartensen/wahoo2garmin/internal/db"
+	"github.com/tommartensen/wahoo2garmin/internal/handlers"
+	"github.com/tommartensen/wahoo2garmin/internal/wahoo"
+)
+
+func main() {
+	loadEnv(".env")
+
+	clientID := requireEnv("WAHOO_CLIENT_ID")
+	clientSecret := requireEnv("WAHOO_CLIENT_SECRET")
+
+	store, err := db.New("wahoo2garmin.db")
+	if err != nil {
+		log.Fatalf("open database: %v", err)
+	}
+	defer store.Close()
+
+	client := wahoo.NewClient(clientID, clientSecret, "https://localhost:8080")
+
+	funcMap := template.FuncMap{
+		"divf": func(a, b float64) float64 { return a / b },
+		"fmtDuration": func(seconds float64) string {
+			total := int(seconds) / 60
+			h, m := total/60, total%60
+			if h > 0 {
+				return fmt.Sprintf("%dh%02dm", h, m)
+			}
+			return fmt.Sprintf("%dm", m)
+		},
+	}
+	loginTmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("templates/layout.html", "templates/login.html"))
+	workoutsTmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("templates/layout.html", "templates/workouts.html"))
+	garminLoginTmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("templates/layout.html", "templates/garmin_login.html"))
+
+	session := handlers.NewSessionManager(clientSecret)
+	auth := handlers.NewAuthHandler(client, store, session, loginTmpl)
+	workouts := handlers.NewWorkoutHandler(client, store, session, workoutsTmpl)
+	garminHandler := handlers.NewGarminHandler(store, session, garminLoginTmpl)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", auth.RootHandler(workouts.Index))
+	mux.HandleFunc("GET /login", auth.Login)
+	mux.HandleFunc("POST /logout", auth.Logout)
+	mux.HandleFunc("GET /workouts", session.RequireAuth(workouts.List))
+	mux.HandleFunc("POST /workouts/sync-all", session.RequireAuth(workouts.SyncAll))
+	mux.HandleFunc("POST /workouts/{id}/sync", session.RequireAuth(workouts.Sync))
+	mux.HandleFunc("GET /workouts/{id}/download", session.RequireAuth(workouts.Download))
+	mux.HandleFunc("GET /garmin/login", session.RequireAuth(garminHandler.LoginForm))
+	mux.HandleFunc("POST /garmin/login", session.RequireAuth(garminHandler.Login))
+	mux.HandleFunc("POST /workouts/upload-all", session.RequireAuth(garminHandler.UploadAll))
+	mux.HandleFunc("POST /workouts/{id}/upload", session.RequireAuth(garminHandler.Upload))
+
+	log.Println("starting server on https://localhost:8080")
+	if err := http.ListenAndServeTLS(":8080", "cert.pem", "key.pem", mux); err != nil {
+		log.Fatalf("server: %v", err)
+	}
+}
+
+func loadEnv(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		os.Setenv(strings.TrimSpace(k), strings.TrimSpace(v))
+	}
+	if err := scanner.Err(); err != nil {
+		log.Printf("reading %s: %v", path, err)
+	}
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("required environment variable %s is not set", key)
+	}
+	return v
+}

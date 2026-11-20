@@ -1,0 +1,14 @@
+# Secrets
+.env
+
+# TLS certificates
+cert.pem
+key.pem
+
+# SQLite database + WAL files
+*.db
+*.db-shm
+*.db-wal
+
+# Go binary
+wahoo2garmin

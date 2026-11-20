@@ -1,0 +1,76 @@
+{{template "layout" .}}
+{{define "content"}}
+<header>
+  <h1>wahoo2garmin</h1>
+  <form method="POST" action="/logout" style="display:inline">
+    <button type="submit" class="btn btn-secondary btn-sm">Logout</button>
+  </form>
+</header>
+<div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem;">
+  <a href="/workouts?refresh=1" class="btn btn-primary btn-sm">Refresh List</a>
+  <form method="POST" action="/workouts/sync-all" style="display:inline">
+    <button type="submit" class="btn btn-primary btn-sm">Sync from Wahoo</button>
+  </form>
+</div>
+<div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
+  {{if .GarminConnected}}
+    <span class="badge badge-success">Garmin Connected</span>
+    <form method="POST" action="/workouts/upload-all" style="display:inline">
+      <button type="submit" class="btn btn-primary btn-sm">Upload All to Garmin</button>
+    </form>
+  {{else}}
+    <a href="/garmin/login" class="btn btn-primary btn-sm">Connect to Garmin</a>
+  {{end}}
+</div>
+<div style="display: flex; gap: 2rem; margin-bottom: 1.5rem; font-size: 0.9rem;">
+  <div><strong>{{.TotalWorkouts}}</strong> workouts in Wahoo</div>
+  <div><strong>{{.TotalSynced}}</strong> synced locally</div>
+  <div><strong>{{.TotalUploaded}}</strong> uploaded to Garmin</div>
+</div>
+{{if .Workouts}}
+<table>
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Type</th>
+      <th>Duration</th>
+      <th>Distance</th>
+      <th>Sync from Wahoo</th>
+      <th>Upload to Garmin</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Workouts}}
+    <tr>
+      <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+      <td>{{if .WorkoutType}}{{.WorkoutType}}{{else}}&mdash;{{end}}</td>
+      <td>{{fmtDuration .DurationSeconds}}</td>
+      <td>{{printf "%.1f" (divf .DistanceMeters 1000)}} km</td>
+      <td>
+        {{if .HasFitFile}}
+          <span class="badge badge-success">Synced</span>
+        {{else}}
+          <form method="POST" action="/workouts/{{.WahooID}}/sync" style="display:inline">
+            <button type="submit" class="btn btn-primary btn-sm">Sync</button>
+          </form>
+        {{end}}
+      </td>
+      <td>
+        {{if .GarminUploadedAt}}
+          <button disabled class="btn btn-secondary btn-sm">Uploaded</button>
+        {{else if and .HasFitFile $.GarminConnected}}
+          <form method="POST" action="/workouts/{{.WahooID}}/upload" style="display:inline">
+            <button type="submit" class="btn btn-primary btn-sm">Upload</button>
+          </form>
+        {{else}}
+          <button disabled class="btn btn-secondary btn-sm">Upload</button>
+        {{end}}
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>No workouts found. Make sure you have recorded workouts on your Wahoo device.</p>
+{{end}}
+{{end}}
