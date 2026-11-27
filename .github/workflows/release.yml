@@ -35,7 +35,7 @@ jobs:
                 -o "dist/3rdparty2garmin_${version}_${goos}_${goarch}" .
             done
           done
-          sha256sum dist/* > dist/checksums.txt
+          (cd dist && sha256sum * > checksums.txt)
 
       - name: Create release
         uses: softprops/action-gh-release@v3

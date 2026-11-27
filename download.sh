@@ -51,8 +51,14 @@ elif command -v shasum >/dev/null 2>&1; then
     sum_cmd="shasum -a 256"
 fi
 if [ -n "$sum_cmd" ] && curl -fsSL -o "${tmpdir}/checksums.txt" "${base_url}/checksums.txt"; then
-    (cd "$tmpdir" && grep " ${file}\$" checksums.txt | $sum_cmd -c - >/dev/null) \
-        || { echo "error: checksum mismatch for ${file}" >&2; exit 1; }
+    # Checksum lines may carry a build-path prefix (e.g. "dist/"), so match
+    # on the filename suffix and compare hashes directly.
+    expected="$(grep "${file}\$" "${tmpdir}/checksums.txt" | awk '{print $1}')"
+    actual="$($sum_cmd "${tmpdir}/${file}" | awk '{print $1}')"
+    if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+        echo "error: checksum mismatch for ${file}" >&2
+        exit 1
+    fi
     echo ">> checksum verified"
 fi
 
