@@ -32,6 +32,18 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
   -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
 ```
 
+## Install
+
+Download a prebuilt binary for your platform (linux/darwin, amd64/arm64):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/tommartensen/3rdparty2garmin/main/download.sh | bash -s -- v1.2.0
+# or from a checkout: ./download.sh v1.2.0 /usr/local/bin/3rdparty2garmin
+```
+
+The script detects OS and architecture, downloads the matching release
+binary, and verifies it against the release checksums.
+
 ## Run
 
 ```sh

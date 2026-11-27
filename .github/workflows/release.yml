@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create and release (e.g. v1.2.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        id: checkout
+        with:
+          ref: main
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Build binaries
+        run: |
+          version="${{ inputs.tag }}"
+          mkdir -p dist
+          for goos in linux darwin; do
+            for goarch in amd64 arm64; do
+              CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch \
+                go build -trimpath -ldflags "-s -w" \
+                -o "dist/3rdparty2garmin_${version}_${goos}_${goarch}" .
+            done
+          done
+          sha256sum dist/* > dist/checksums.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.tag }}
+          target_commitish: ${{ steps.checkout.outputs.commit }}
+          files: dist/*
+          generate_release_notes: true
