@@ -33,8 +33,6 @@ type Workout struct {
 	DistanceMeters   float64
 	Calories         float64
 	FileURL          string
-	HasFitFile       bool
-	SyncedAt         *time.Time
 	GarminUploadedAt *time.Time
 }
 
@@ -89,8 +87,6 @@ func (s *Store) migrate() error {
 			distance_meters   REAL,
 			calories          REAL,
 			file_url          TEXT,
-			fit_file          BLOB,
-			synced_at         DATETIME,
 			garmin_uploaded_at DATETIME,
 			UNIQUE(user_id, source, external_id)
 		);
@@ -272,48 +268,12 @@ func (s *Store) GetFileURL(userID int, source, externalID string) (string, error
 	return url, nil
 }
 
-func (s *Store) SaveFitFile(userID int, source, externalID string, data []byte) error {
-	_, err := s.db.Exec(
-		"UPDATE workouts SET fit_file = ?, synced_at = ? WHERE user_id = ? AND source = ? AND external_id = ?",
-		data, time.Now(), userID, source, externalID,
-	)
-	return err
-}
-
-func (s *Store) GetFitFile(userID int, source, externalID string) ([]byte, error) {
-	row := s.db.QueryRow("SELECT fit_file FROM workouts WHERE user_id = ? AND source = ? AND external_id = ?", userID, source, externalID)
-	var data []byte
-	if err := row.Scan(&data); err != nil {
-		return nil, fmt.Errorf("get fit file: %w", err)
-	}
-	return data, nil
-}
-
-func (s *Store) GetWorkout(userID int, source, externalID string) (*Workout, error) {
-	row := s.db.QueryRow(`
-		SELECT id, user_id, source, external_id, name, workout_type, created_at,
-		       duration_seconds, distance_meters, calories, COALESCE(file_url, ''),
-		       fit_file IS NOT NULL, synced_at, garmin_uploaded_at
-		FROM workouts
-		WHERE user_id = ? AND source = ? AND external_id = ?
-	`, userID, source, externalID)
-	w := &Workout{}
-	if err := row.Scan(
-		&w.ID, &w.UserID, &w.Source, &w.ExternalID, &w.Name, &w.WorkoutType, &w.CreatedAt,
-		&w.DurationSeconds, &w.DistanceMeters, &w.Calories, &w.FileURL,
-		&w.HasFitFile, &w.SyncedAt, &w.GarminUploadedAt,
-	); err != nil {
-		return nil, fmt.Errorf("get workout: %w", err)
-	}
-	return w, nil
-}
-
 // ListWorkouts returns the user's workouts, newest first; limit <= 0 returns all.
 func (s *Store) ListWorkouts(userID int, limit, offset int) ([]Workout, error) {
 	query := `
 		SELECT id, user_id, source, external_id, name, workout_type, created_at,
 		       duration_seconds, distance_meters, calories, COALESCE(file_url, ''),
-		       fit_file IS NOT NULL, synced_at, garmin_uploaded_at
+		       garmin_uploaded_at
 		FROM workouts
 		WHERE user_id = ?
 		ORDER BY created_at DESC`
@@ -335,7 +295,7 @@ func (s *Store) ListWorkouts(userID int, limit, offset int) ([]Workout, error) {
 		if err := rows.Scan(
 			&w.ID, &w.UserID, &w.Source, &w.ExternalID, &w.Name, &w.WorkoutType, &w.CreatedAt,
 			&w.DurationSeconds, &w.DistanceMeters, &w.Calories, &w.FileURL,
-			&w.HasFitFile, &w.SyncedAt, &w.GarminUploadedAt,
+			&w.GarminUploadedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan workout: %w", err)
 		}
@@ -344,16 +304,15 @@ func (s *Store) ListWorkouts(userID int, limit, offset int) ([]Workout, error) {
 	return workouts, rows.Err()
 }
 
-// WorkoutStats returns total, locally synced, and uploaded workout counts.
-func (s *Store) WorkoutStats(userID int) (total, synced, uploaded int, err error) {
+// WorkoutStats returns total and uploaded workout counts.
+func (s *Store) WorkoutStats(userID int) (total, uploaded int, err error) {
 	row := s.db.QueryRow(`
 		SELECT COUNT(*),
-		       COALESCE(SUM(fit_file IS NOT NULL), 0),
 		       COALESCE(SUM(garmin_uploaded_at IS NOT NULL), 0)
 		FROM workouts
 		WHERE user_id = ?
 	`, userID)
-	err = row.Scan(&total, &synced, &uploaded)
+	err = row.Scan(&total, &uploaded)
 	if err != nil {
 		err = fmt.Errorf("workout stats: %w", err)
 	}

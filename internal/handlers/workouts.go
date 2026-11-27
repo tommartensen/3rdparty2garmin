@@ -99,7 +99,7 @@ func parsePageConfig(r *http.Request, total int) pageConfig {
 
 // workoutsInView returns the workouts on the requested page plus the page config.
 func workoutsInView(store *db.Store, r *http.Request, userID int) ([]db.Workout, pageConfig, error) {
-	total, _, _, err := store.WorkoutStats(userID)
+	total, _, err := store.WorkoutStats(userID)
 	if err != nil {
 		return nil, pageConfig{}, err
 	}
@@ -164,7 +164,7 @@ func (h *WorkoutHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	total, synced, uploaded, err := h.store.WorkoutStats(userID)
+	total, uploaded, err := h.store.WorkoutStats(userID)
 	if err != nil {
 		log.Printf("workout stats: %v", err)
 	}
@@ -174,15 +174,14 @@ func (h *WorkoutHandler) List(w http.ResponseWriter, r *http.Request) {
 		GarminConnected   bool
 		MyWhooshConnected bool
 		TotalWorkouts     int
-		Donuts            [2]donutStat
+		Donuts            [1]donutStat
 		PageConfig        pageConfig
 	}{
 		Workouts:          workouts,
 		GarminConnected:   h.store.HasGarminTokens(userID),
 		MyWhooshConnected: h.store.HasMyWhooshTokens(userID),
 		TotalWorkouts:     total,
-		Donuts: [2]donutStat{
-			newDonutStat("Synced locally", synced, total),
+		Donuts: [1]donutStat{
 			newDonutStat("Uploaded to Garmin", uploaded, total),
 		},
 		PageConfig: cfg,
