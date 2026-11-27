@@ -93,7 +93,8 @@ func (h *AuthHandler) RootHandler(index http.HandlerFunc) http.HandlerFunc {
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	h.session.Clear(w)
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	// Also end the Wahoo session so the next Connect doesn't silently sign back in.
+	http.Redirect(w, r, wahoo.SSOLogoutURL, http.StatusSeeOther)
 }
 
 func randomState() string {

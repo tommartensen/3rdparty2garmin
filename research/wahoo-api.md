@@ -62,6 +62,46 @@ POST https://api.wahooligan.com/oauth/token
 - Each refresh issues a new `refresh_token`; the old one is revoked on first API call with the new token.
 - Max 10 unrevoked access tokens per user.
 
+## Deauthorization & Logout (researched 2026-11-27)
+
+### Deauthorize app access (documented)
+
+```
+DELETE https://api.wahooligan.com/v1/permissions
+Authorization: Bearer <access_token>
+```
+
+- Revokes the application's access for the authenticated user — the
+  programmatic equivalent of the user revoking the app from their account
+  settings (https://cloud-api.wahooligan.com/#deauthorize).
+- Developer-portal flags control side effects: "Delete Upcoming Workouts"
+  and "Delete Owned Plans".
+- There is **no** RFC 7009-style `/oauth/revoke` endpoint; token lifecycle
+  is rotation-based only.
+
+### Browser-session logout (undocumented, probe-confirmed 2026-11-27)
+
+Wahoo's OAuth sits on a SAML stack: `api.wahooligan.com` is a Rails SAML
+service provider ("FitnessClubWeb", session cookie `_FitnessClubWeb_session`),
+and `login.wahoofitness.com` is the identity provider.
+
+- `GET https://api.wahooligan.com/sso_logout` → `302` to
+  `login.wahoofitness.com/saml/logout?SAMLRequest=…` (SAML Single Logout)
+  and rotates the SP session cookie. **This is the endpoint that ends the
+  login session** — the app's logout should redirect here.
+- `GET /logout` only ends the SP session: the IdP session at
+  `login.wahoofitness.com` survives and silently re-establishes it via
+  `/sso_login` on the next authorize (observed: auto-login persists).
+- `/` serves a post-logout page: "You are logged out. (You can close this
+  window and return to your app.)"
+- Unauthenticated `/oauth/authorize` redirects through
+  `/sso_login?redirect_to=…`.
+- Logging out on `wahoofitness.com` / `eu.wahoofitness.com` does **not**
+  end any of these sessions (tested 2026-11-27).
+- The authorize endpoint ignores `prompt=login` (tested 2026-11-27).
+- `DELETE` on `/logout`, `/users/sign_out`, `/sso_logout` → 404 (GET-only
+  routes).
+
 ## Required Scopes
 
 For this project we need:
@@ -170,6 +210,8 @@ Exempted from rate limits: auth requests, token refreshes, CDN file downloads.
 3. CDN file downloads are free from rate limits.
 4. Sandbox and Production are separate app registrations — cannot convert one to the other.
 5. Only workout data recorded on Wahoo devices is accessible — third-party-originated workouts are excluded.
+6. No token-revoke endpoint — use `DELETE /v1/permissions` to deauthorize the app entirely.
+7. The OAuth SSO session lives on `api.wahooligan.com`; only `GET /logout` on that host ends it.
 
 ## Official Resources
 

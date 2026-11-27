@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"html/template"
@@ -11,16 +12,20 @@ import (
 	"github.com/tommartensen/3rdparty2garmin/internal/db"
 	"github.com/tommartensen/3rdparty2garmin/internal/fit"
 	"github.com/tommartensen/3rdparty2garmin/internal/garmin"
+	"github.com/tommartensen/3rdparty2garmin/internal/mywhoosh"
+	"github.com/tommartensen/3rdparty2garmin/internal/wahoo"
 )
 
 type GarminHandler struct {
+	wahoo   *wahoo.Client
+	whoosh  *mywhoosh.Client
 	store   *db.Store
 	session *SessionManager
 	tmpl    *template.Template
 }
 
-func NewGarminHandler(store *db.Store, session *SessionManager, tmpl *template.Template) *GarminHandler {
-	return &GarminHandler{store: store, session: session, tmpl: tmpl}
+func NewGarminHandler(wahooClient *wahoo.Client, whoosh *mywhoosh.Client, store *db.Store, session *SessionManager, tmpl *template.Template) *GarminHandler {
+	return &GarminHandler{wahoo: wahooClient, whoosh: whoosh, store: store, session: session, tmpl: tmpl}
 }
 
 func (h *GarminHandler) LoginForm(w http.ResponseWriter, _ *http.Request) {
@@ -56,10 +61,7 @@ func (h *GarminHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 // prepareForGarmin rewrites a FIT file's device identity so Garmin's
-// first-party analytics (Load, Readiness, Training Status, ...) compute
-// for it. Returns an error if the file can't be processed, so the user
-// can fix or replace the file instead of uploading a file Garmin would
-// ignore.
+// first-party analytics compute for it.
 func (h *GarminHandler) prepareForGarmin(data []byte, source, externalID string) ([]byte, error) {
 	opts := fit.Options{StripTemperature: source == db.SourceMyWhoosh}
 	fixed, err := fit.Fix(data, opts)
@@ -69,12 +71,51 @@ func (h *GarminHandler) prepareForGarmin(data []byte, source, externalID string)
 	return fixed, nil
 }
 
-// upload uploads a single workout's FIT file to Garmin and marks it
-// uploaded. Shared by the per-workout and bulk upload handlers.
-func (h *GarminHandler) upload(userID int, source, externalID string) error {
+// fetchFitFile downloads the workout's FIT file from its source and stores it;
+// fileRef is a download URL for Wahoo, an activity file ID for MyWhoosh.
+func (h *GarminHandler) fetchFitFile(ctx context.Context, userID int, source, externalID string) error {
+	fileRef, err := h.store.GetFileURL(userID, source, externalID)
+	if err != nil || fileRef == "" {
+		return errors.New("no FIT file available for this workout — try refreshing first")
+	}
+
+	var data []byte
+	switch source {
+	case db.SourceWahoo:
+		data, err = h.wahoo.DownloadFitFile(ctx, fileRef)
+	case db.SourceMyWhoosh:
+		err = withMyWhooshToken(h.whoosh, h.store, userID, func(accessToken string) error {
+			var err error
+			data, err = h.whoosh.DownloadFitFile(accessToken, fileRef)
+			return err
+		})
+	default:
+		err = errors.New("unknown source: " + source)
+	}
+	if err != nil {
+		return fmt.Errorf("download FIT file: %w", err)
+	}
+
+	if err := h.store.SaveFitFile(userID, source, externalID, data); err != nil {
+		return fmt.Errorf("save FIT file: %w", err)
+	}
+	return nil
+}
+
+// upload syncs a single workout to Garmin, fetching its FIT file if needed.
+func (h *GarminHandler) upload(ctx context.Context, userID int, source, externalID string) error {
 	data, err := h.store.GetFitFile(userID, source, externalID)
-	if err != nil || data == nil {
-		return fmt.Errorf("FIT file not found — sync the workout first")
+	if err != nil {
+		return err
+	}
+	if data == nil {
+		if err := h.fetchFitFile(ctx, userID, source, externalID); err != nil {
+			return err
+		}
+		data, err = h.store.GetFitFile(userID, source, externalID)
+		if err != nil || data == nil {
+			return fmt.Errorf("FIT file not found after download")
+		}
 	}
 	data, err = h.prepareForGarmin(data, source, externalID)
 	if err != nil {
@@ -134,7 +175,7 @@ func (h *GarminHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.upload(userID, source, externalID); err != nil {
+	if err := h.upload(r.Context(), userID, source, externalID); err != nil {
 		log.Printf("upload: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -143,8 +184,7 @@ func (h *GarminHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/workouts", http.StatusSeeOther)
 }
 
-// UploadAll uploads the workouts currently in view (per the page/size
-// form parameters) to Garmin, not the entire history.
+// UploadAll uploads the workouts currently in view (per page/size), not the entire history.
 func (h *GarminHandler) UploadAll(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFromRequest(h.session, r)
 
@@ -162,7 +202,8 @@ func (h *GarminHandler) UploadAll(w http.ResponseWriter, r *http.Request) {
 
 	var inView []db.Workout
 	for _, wk := range workouts {
-		if wk.HasFitFile && wk.GarminUploadedAt == nil {
+		// Skip workouts the source has no FIT file for; they can never upload.
+		if wk.GarminUploadedAt == nil && wk.FileURL != "" {
 			inView = append(inView, wk)
 		}
 	}
@@ -177,7 +218,7 @@ func (h *GarminHandler) UploadAll(w http.ResponseWriter, r *http.Request) {
 			time.Sleep(1 * time.Second)
 		}
 
-		err := h.upload(userID, wk.Source, wk.ExternalID)
+		err := h.upload(r.Context(), userID, wk.Source, wk.ExternalID)
 		if err != nil {
 			if errors.As(err, &garmin.ErrRateLimited{}) {
 				log.Printf("upload all: rate limited after %d uploads, stopping", uploaded)

@@ -12,10 +12,14 @@ import (
 	"golang.org/x/oauth2"
 )
 
-const baseURL = "https://api.wahooligan.com"
+const defaultBaseURL = "https://api.wahooligan.com"
+
+// SSOLogoutURL ends the browser's Wahoo login session (SAML single logout).
+const SSOLogoutURL = defaultBaseURL + "/sso_logout"
 
 type Client struct {
 	OAuthConfig *oauth2.Config
+	baseURL     string
 }
 
 func NewClient(clientID, clientSecret, redirectURL string) *Client {
@@ -25,11 +29,12 @@ func NewClient(clientID, clientSecret, redirectURL string) *Client {
 			ClientSecret: clientSecret,
 			RedirectURL:  redirectURL,
 			Endpoint: oauth2.Endpoint{
-				AuthURL:  baseURL + "/oauth/authorize",
-				TokenURL: baseURL + "/oauth/token",
+				AuthURL:  defaultBaseURL + "/oauth/authorize",
+				TokenURL: defaultBaseURL + "/oauth/token",
 			},
 			Scopes: []string{"user_read", "workouts_read"},
 		},
+		baseURL: defaultBaseURL,
 	}
 }
 
@@ -42,14 +47,12 @@ func (c *Client) Exchange(ctx context.Context, code string) (*oauth2.Token, erro
 }
 
 type userResponse struct {
-	User struct {
-		ID int `json:"id"`
-	} `json:"user"`
+	ID int `json:"id"`
 }
 
 func (c *Client) GetUser(ctx context.Context, token *oauth2.Token) (int, error) {
 	client := c.OAuthConfig.Client(ctx, token)
-	resp, err := client.Get(baseURL + "/v1/user")
+	resp, err := client.Get(c.baseURL + "/v1/user")
 	if err != nil {
 		return 0, fmt.Errorf("get user: %w", err)
 	}
@@ -62,7 +65,10 @@ func (c *Client) GetUser(ctx context.Context, token *oauth2.Token) (int, error) 
 	if err := json.NewDecoder(resp.Body).Decode(&u); err != nil {
 		return 0, fmt.Errorf("decode user: %w", err)
 	}
-	return u.User.ID, nil
+	if u.ID == 0 {
+		return 0, fmt.Errorf("user response has no id")
+	}
+	return u.ID, nil
 }
 
 type WorkoutSummary struct {
@@ -170,10 +176,9 @@ type ListOptions struct {
 	OldestFirst bool
 }
 
-// ListWorkoutsPageByPage calls onPage for each page of workouts fetched from
-// the API. It stops when all pages are consumed or onPage returns false.
-// If a rate limit (429) is hit, it stops and returns nil — already-delivered
-// pages have been handed to onPage and can be persisted by the caller.
+// ListWorkoutsPageByPage calls onPage for each page of workouts, stopping
+// when all pages are consumed or onPage returns false. On a 429 it stops
+// and returns nil; already-delivered pages stay with the caller.
 func (c *Client) ListWorkoutsPageByPage(ctx context.Context, token *oauth2.Token, opts ListOptions, onPage func(WorkoutPage) bool) error {
 	client := c.OAuthConfig.Client(ctx, token)
 	perPage := 50
@@ -185,7 +190,7 @@ func (c *Client) ListWorkoutsPageByPage(ctx context.Context, token *oauth2.Token
 }
 
 func (c *Client) fetchPage(client *http.Client, page, perPage int) (*workoutsResponse, error) {
-	url := fmt.Sprintf("%s/v1/workouts?page=%d&per_page=%d", baseURL, page, perPage)
+	url := fmt.Sprintf("%s/v1/workouts?page=%d&per_page=%d", c.baseURL, page, perPage)
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("list workouts page %d: %w", page, err)

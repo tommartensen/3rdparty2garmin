@@ -1,9 +1,6 @@
-// Package fit post-processes Wahoo activity FIT files so that Garmin
-// Connect's first-party analytics (Load, Readiness, Training Status,
-// Training Effect, VO2max) compute for them. Garmin ignores those
-// metrics for activities recorded by non-Garmin manufacturers, so the
-// device identity in the file_id and device_info messages is rewritten
-// to a Garmin Fenix 6S before upload.
+// Package fit post-processes source activity FIT files for Garmin Connect.
+// Garmin ignores first-party analytics (Load, Readiness, VO2max, ...) for
+// non-Garmin manufacturers, so device identity is rewritten before upload.
 package fit
 
 import (
@@ -33,15 +30,12 @@ const (
 
 // Options controls source-specific FIT processing.
 type Options struct {
-	// StripTemperature removes temperature from all records. MyWhoosh
-	// virtual rides carry bogus temperature values; Wahoo temperature
-	// readings are genuine and are kept.
+	// StripTemperature removes bogus temperature records (MyWhoosh virtual rides).
 	StripTemperature bool
 }
 
-// Fix decodes a source activity FIT file, backfills missing session
-// averages from record data, spoofs the device identity as a Garmin
-// Fenix 6S, and returns the re-encoded file.
+// Fix backfills missing session averages from records, spoofs the device
+// identity as a Garmin Fenix 6S, and returns the re-encoded file.
 func Fix(data []byte, opts Options) ([]byte, error) {
 	lis := filedef.NewListener()
 	defer lis.Close()

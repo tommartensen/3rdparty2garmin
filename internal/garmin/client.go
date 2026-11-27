@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	// Device-sync style upload, as used by the Garmin Connect mobile app
-	// and mywhoosh2garmin — the import-style /upload/fit endpoint produces
-	// activities that Garmin's analytics pipeline treats differently.
+	// Device-sync style upload as used by the Garmin Connect mobile app;
+	// the import-style /upload/fit endpoint yields activities Garmin's
+	// analytics treat differently.
 	uploadURL       = "https://connectapi.garmin.com/upload-service/upload"
 	uploadUserAgent = "GCM-iOS-5.19.1.2"
 )

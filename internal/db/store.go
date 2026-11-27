@@ -16,7 +16,6 @@ const (
 
 type User struct {
 	ID           int
-	WahooUserID  int
 	AccessToken  string
 	RefreshToken string
 	Expiry       time.Time
@@ -121,7 +120,6 @@ func (s *Store) migrate() error {
 
 // migrateMyWhooshRefreshToken adds the refresh_token column to
 // mywhoosh_tokens tables created before token refresh was supported.
-// Existing rows get an empty refresh token and need one re-login.
 func (s *Store) migrateMyWhooshRefreshToken() error {
 	var hasColumn int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('mywhoosh_tokens') WHERE name = 'refresh_token'`).Scan(&hasColumn)
@@ -138,10 +136,17 @@ func (s *Store) migrateMyWhooshRefreshToken() error {
 }
 
 // migrateWorkoutsSource migrates the original wahoo-only workouts table
-// (keyed by integer wahoo_id) to the multi-source schema (source +
-// external_id TEXT). Rebuilding the table is required to change the
-// unique constraint; the guard makes it a no-op once migrated.
+// to the multi-source schema; the guard makes it a no-op once migrated.
 func (s *Store) migrateWorkoutsSource() error {
+	// A fresh database has no workouts table yet; migrate() creates the new schema.
+	var hasTable int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workouts'`).Scan(&hasTable); err != nil {
+		return fmt.Errorf("check workouts table: %w", err)
+	}
+	if hasTable == 0 {
+		return nil
+	}
+
 	var hasSource int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'source'`).Scan(&hasSource)
 	if err != nil {
@@ -192,7 +197,7 @@ func (s *Store) migrateWorkoutsSource() error {
 }
 
 func (s *Store) UpsertUser(wahooUserID int, accessToken, refreshToken string, expiry time.Time) (int, error) {
-	res, err := s.db.Exec(`
+	_, err := s.db.Exec(`
 		INSERT INTO users (wahoo_user_id, access_token, refresh_token, expiry)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(wahoo_user_id) DO UPDATE SET
@@ -204,22 +209,18 @@ func (s *Store) UpsertUser(wahooUserID int, accessToken, refreshToken string, ex
 		return 0, fmt.Errorf("upsert user: %w", err)
 	}
 
-	id, err := res.LastInsertId()
-	if err != nil || id == 0 {
-		row := s.db.QueryRow("SELECT id FROM users WHERE wahoo_user_id = ?", wahooUserID)
-		var userID int
-		if err := row.Scan(&userID); err != nil {
-			return 0, fmt.Errorf("get user id: %w", err)
-		}
-		return userID, nil
+	// last_insert_rowid() is stale after ON CONFLICT DO UPDATE; read the id back.
+	var userID int
+	if err := s.db.QueryRow("SELECT id FROM users WHERE wahoo_user_id = ?", wahooUserID).Scan(&userID); err != nil {
+		return 0, fmt.Errorf("get user id: %w", err)
 	}
-	return int(id), nil
+	return userID, nil
 }
 
 func (s *Store) GetUser(userID int) (*User, error) {
-	row := s.db.QueryRow("SELECT id, wahoo_user_id, access_token, refresh_token, expiry FROM users WHERE id = ?", userID)
+	row := s.db.QueryRow("SELECT id, access_token, refresh_token, expiry FROM users WHERE id = ?", userID)
 	u := &User{}
-	if err := row.Scan(&u.ID, &u.WahooUserID, &u.AccessToken, &u.RefreshToken, &u.Expiry); err != nil {
+	if err := row.Scan(&u.ID, &u.AccessToken, &u.RefreshToken, &u.Expiry); err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
 	return u, nil
@@ -307,8 +308,7 @@ func (s *Store) GetWorkout(userID int, source, externalID string) (*Workout, err
 	return w, nil
 }
 
-// ListWorkouts returns the user's workouts, newest first. A limit <= 0
-// returns all rows; otherwise limit/offset paginate.
+// ListWorkouts returns the user's workouts, newest first; limit <= 0 returns all.
 func (s *Store) ListWorkouts(userID int, limit, offset int) ([]Workout, error) {
 	query := `
 		SELECT id, user_id, source, external_id, name, workout_type, created_at,
@@ -344,8 +344,7 @@ func (s *Store) ListWorkouts(userID int, limit, offset int) ([]Workout, error) {
 	return workouts, rows.Err()
 }
 
-// WorkoutStats returns total, locally synced, and Garmin-uploaded
-// workout counts across all sources.
+// WorkoutStats returns total, locally synced, and uploaded workout counts.
 func (s *Store) WorkoutStats(userID int) (total, synced, uploaded int, err error) {
 	row := s.db.QueryRow(`
 		SELECT COUNT(*),

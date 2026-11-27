@@ -38,9 +38,8 @@ func (h *WorkoutHandler) Index(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// pageConfig describes the current workouts-list view: which page of
-// which size. Size <= 0 means "all". Shared by the list, sync-all, and
-// upload-all handlers so bulk actions apply to the workouts in view.
+// pageConfig describes the list view (page/size; size <= 0 = "all"),
+// shared by the list and upload-all handlers.
 type pageConfig struct {
 	Page       int
 	Size       int
@@ -60,14 +59,12 @@ func (p pageConfig) Offset() int {
 	return (p.Page - 1) * p.Size
 }
 
-// QueryString renders the view parameters as URL query, so pagination
-// links and post-action redirects keep the user in place.
+// QueryString renders the view parameters so links and redirects keep the user in place.
 func (p pageConfig) QueryString() string {
 	return fmt.Sprintf("page=%d&size=%s", p.Page, p.SizeParam)
 }
 
-// parsePageConfig reads page/size from the request (query string for
-// GET, form body for POST) and clamps them against the total count.
+// parsePageConfig reads page/size from the request and clamps them against the total count.
 func parsePageConfig(r *http.Request, total int) pageConfig {
 	p := pageConfig{Page: 1, Size: 25, SizeParam: "25"}
 	if sp := r.FormValue("size"); sp != "" {
@@ -100,8 +97,7 @@ func parsePageConfig(r *http.Request, total int) pageConfig {
 	return p
 }
 
-// workoutsInView returns the workouts on the requested page plus the
-// page configuration, using the same selection as the list view.
+// workoutsInView returns the workouts on the requested page plus the page config.
 func workoutsInView(store *db.Store, r *http.Request, userID int) ([]db.Workout, pageConfig, error) {
 	total, _, _, err := store.WorkoutStats(userID)
 	if err != nil {
@@ -115,9 +111,7 @@ func workoutsInView(store *db.Store, r *http.Request, userID int) ([]db.Workout,
 	return workouts, cfg, nil
 }
 
-// donutStat feeds the stats widget's radial meters: a filled arc (the
-// count) on a lighter same-ramp track (the remainder), with the value
-// labeled in the center.
+// donutStat feeds the stats widget's radial meters.
 type donutStat struct {
 	Label         string
 	Count         int
@@ -140,14 +134,12 @@ func newDonutStat(label string, count, total int) donutStat {
 		d.Percent = int(math.Round(float64(count) / float64(total) * 100))
 		d.Dash = d.Circumference * float64(count) / float64(total)
 	}
-	// A round cap would render a dot at zero and overlap itself on a
-	// full circle; only arc ends get it.
+	// A round cap renders a dot at zero and overlaps on a full circle.
 	d.RoundCap = count > 0 && count < total
 	return d
 }
 
-// capitalizeFirst uppercases the first rune, so MyWhoosh's lowercase
-// sport types ("cycling") match Wahoo's capitalized ones ("Cycling").
+// capitalizeFirst uppercases the first rune so MyWhoosh's "cycling" matches Wahoo's "Cycling".
 func capitalizeFirst(s string) string {
 	if s == "" {
 		return s
@@ -318,109 +310,4 @@ func (h *WorkoutHandler) refreshFromMyWhoosh(userID int) {
 		newCount++
 	}
 	log.Printf("synced mywhoosh: %d new activities, %d total on server", newCount, len(activities))
-}
-
-// downloadFit fetches the FIT file for a workout from its source.
-// fileRef is source-specific: a download URL for Wahoo, an activity
-// file ID for MyWhoosh.
-func (h *WorkoutHandler) downloadFit(r *http.Request, userID int, source, fileRef string) ([]byte, error) {
-	switch source {
-	case db.SourceWahoo:
-		return h.client.DownloadFitFile(r.Context(), fileRef)
-	case db.SourceMyWhoosh:
-		var data []byte
-		err := withMyWhooshToken(h.whoosh, h.store, userID, func(accessToken string) error {
-			var err error
-			data, err = h.whoosh.DownloadFitFile(accessToken, fileRef)
-			return err
-		})
-		return data, err
-	default:
-		return nil, errors.New("unknown source: " + source)
-	}
-}
-
-func (h *WorkoutHandler) Sync(w http.ResponseWriter, r *http.Request) {
-	userID := UserIDFromRequest(h.session, r)
-	source, externalID := r.PathValue("source"), r.PathValue("id")
-	if !validSource(source) {
-		http.Error(w, "invalid source", http.StatusBadRequest)
-		return
-	}
-
-	fileRef, err := h.store.GetFileURL(userID, source, externalID)
-	if err != nil || fileRef == "" {
-		http.Error(w, "no FIT file available for this workout — try refreshing first", http.StatusNotFound)
-		return
-	}
-
-	data, err := h.downloadFit(r, userID, source, fileRef)
-	if err != nil {
-		log.Printf("download fit file: %v", err)
-		http.Error(w, "failed to download FIT file: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if err := h.store.SaveFitFile(userID, source, externalID, data); err != nil {
-		log.Printf("save fit file: %v", err)
-		http.Error(w, "failed to save FIT file", http.StatusInternalServerError)
-		return
-	}
-
-	http.Redirect(w, r, "/workouts", http.StatusSeeOther)
-}
-
-// SyncAll syncs the workouts currently in view (per the page/size form
-// parameters), not the entire history.
-func (h *WorkoutHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
-	userID := UserIDFromRequest(h.session, r)
-
-	workouts, cfg, err := workoutsInView(h.store, r, userID)
-	if err != nil {
-		log.Printf("list workouts: %v", err)
-		http.Error(w, "failed to list workouts", http.StatusInternalServerError)
-		return
-	}
-
-	synced, failed := 0, 0
-	for _, wk := range workouts {
-		if wk.HasFitFile || wk.FileURL == "" {
-			continue
-		}
-		data, err := h.downloadFit(r, userID, wk.Source, wk.FileURL)
-		if err != nil {
-			log.Printf("download fit %s/%s: %v", wk.Source, wk.ExternalID, err)
-			failed++
-			continue
-		}
-		if err := h.store.SaveFitFile(userID, wk.Source, wk.ExternalID, data); err != nil {
-			log.Printf("save fit %s/%s: %v", wk.Source, wk.ExternalID, err)
-			failed++
-			continue
-		}
-		synced++
-	}
-	log.Printf("sync all (page %d, size %s): %d synced, %d failed", cfg.Page, cfg.SizeParam, synced, failed)
-	http.Redirect(w, r, "/workouts?"+cfg.QueryString(), http.StatusSeeOther)
-}
-
-func (h *WorkoutHandler) Download(w http.ResponseWriter, r *http.Request) {
-	userID := UserIDFromRequest(h.session, r)
-	source, externalID := r.PathValue("source"), r.PathValue("id")
-	if !validSource(source) {
-		http.Error(w, "invalid source", http.StatusBadRequest)
-		return
-	}
-
-	data, err := h.store.GetFitFile(userID, source, externalID)
-	if err != nil || data == nil {
-		http.Error(w, "FIT file not found", http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+externalID+".fit\"")
-	if _, err := w.Write(data); err != nil {
-		log.Printf("write fit download: %v", err)
-	}
 }

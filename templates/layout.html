@@ -39,6 +39,34 @@
     .donut-center .value { font-size: 1.4rem; font-weight: 600; color: #0b0b0b; line-height: 1.2; }
     .donut-center .percent { font-size: 0.8rem; color: #52514e; }
     .donut-label { text-align: center; font-size: 0.85rem; color: #52514e; margin-top: 0.5rem; }
+    .pagination { display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem; font-size: 0.85rem; }
+    .pagination .per-page { margin-left: auto; }
+    @media (max-width: 640px) {
+      .container { padding: 1rem 0.75rem; }
+      header { margin-bottom: 1rem; }
+      .widget { min-width: 100%; }
+      .stats-row { gap: 1.5rem; }
+      /* Workouts table becomes one compact card per row:
+         type + source / date / duration, distance + actions. */
+      table.workouts, table.workouts tbody { display: block; }
+      table.workouts { background: none; box-shadow: none; border-radius: 0; overflow: visible; }
+      table.workouts thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+      table.workouts tr {
+        display: grid; grid-template-columns: auto auto 1fr auto auto; align-items: center; column-gap: 0.5rem;
+        grid-template-areas: "type type type source source" "date date date date date" "dur dist . sync upload";
+        background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 0.5rem; padding: 0.6rem 0.75rem;
+      }
+      table.workouts td { padding: 0; border-bottom: none; }
+      table.workouts td:nth-child(1) { grid-area: date; font-size: 0.8rem; color: #666; }
+      table.workouts td:nth-child(2) { grid-area: source; justify-self: end; }
+      table.workouts td:nth-child(2) .badge { background: #eef1f4; color: #555; }
+      table.workouts td:nth-child(3) { grid-area: type; font-weight: 600; }
+      table.workouts td:nth-child(4) { grid-area: dur; font-size: 0.9rem; }
+      table.workouts td:nth-child(5) { grid-area: dist; font-size: 0.9rem; }
+      table.workouts td:nth-child(5)::before { content: "·"; color: #999; margin-right: 0.5rem; }
+      table.workouts td:nth-child(6) { grid-area: sync; }
+      table.workouts td:nth-child(7) { grid-area: upload; }
+    }
   </style>
 </head>
 <body>

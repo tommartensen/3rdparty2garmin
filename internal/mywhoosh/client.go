@@ -1,7 +1,6 @@
-// Package mywhoosh talks to the MyWhoosh API: email/password login,
-// activity listing, and FIT file download. Ported from the standalone
-// mywhoosh2garmin app, made stateless — tokens are passed in per call
-// and persisted by the caller (the DB store), not on disk.
+// Package mywhoosh talks to the MyWhoosh API: login, activity listing,
+// and FIT file download. Tokens are passed in per call and persisted by
+// the caller.
 package mywhoosh
 
 import (
@@ -23,14 +22,11 @@ const (
 	activitiesBase = "https://service14.mywhoosh.com/v2/"
 )
 
-// ErrUnauthorized indicates a MyWhoosh token was rejected. For the
-// access token, a refresh may help; for the refresh token, the user
-// needs to log in again.
+// ErrUnauthorized indicates a rejected MyWhoosh token.
 type ErrUnauthorized struct{}
 
 func (e ErrUnauthorized) Error() string { return "MyWhoosh session expired — reconnect to MyWhoosh" }
 
-// Activity represents a single MyWhoosh ride activity.
 type Activity struct {
 	ID             string  `json:"id"`
 	Name           string  `json:"title"`
@@ -47,8 +43,7 @@ type Activity struct {
 	StartDatetime  string  `json:"startDatetime,omitempty"`
 }
 
-// StartTime returns the activity start time, preferring startDatetime
-// over the epoch date field.
+// StartTime prefers startDatetime over the epoch date field.
 func (a *Activity) StartTime() (time.Time, error) {
 	if a.StartDatetime != "" {
 		if t, err := time.Parse("2006-01-02T15:04:05.000Z", a.StartDatetime); err == nil {
@@ -61,8 +56,7 @@ func (a *Activity) StartTime() (time.Time, error) {
 	return time.Time{}, fmt.Errorf("activity %s has no date", a.ID)
 }
 
-// DurationSeconds parses the rideDuration field ("01:31:54.000") into
-// seconds. Returns 0 for empty or unparseable values.
+// DurationSeconds parses rideDuration ("01:31:54.000") into seconds; 0 if unparseable.
 func (a *Activity) DurationSeconds() float64 {
 	if a.RideDuration == "" {
 		return 0
@@ -78,16 +72,14 @@ func (a *Activity) DurationSeconds() float64 {
 	return float64(h*3600 + m*60 + s)
 }
 
-// Tokens is a MyWhoosh session. Both tokens are JWTs; the access token
-// lasts 15 days, the refresh token 60 days (see research/mywhoosh-api.md).
+// Tokens is a MyWhoosh session; both are JWTs (see research/mywhoosh-api.md).
 type Tokens struct {
 	AccessToken  string
 	RefreshToken string
 	WhooshID     string
 }
 
-// TokenExpiry returns the exp claim of a MyWhoosh JWT, or the zero time
-// if it cannot be decoded. The signature is not verified.
+// TokenExpiry returns a MyWhoosh JWT's exp claim (unverified) or the zero time.
 func TokenExpiry(token string) time.Time {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -114,8 +106,6 @@ func NewClient() *Client {
 	return &Client{httpClient: &http.Client{Timeout: 30 * time.Second}}
 }
 
-// Login authenticates with MyWhoosh using email and password and
-// returns the session tokens to be stored by the caller.
 func (c *Client) Login(email, password string) (*Tokens, error) {
 	payload := map[string]any{
 		"Username":      email,
@@ -164,10 +154,8 @@ func (c *Client) Login(email, password string) (*Tokens, error) {
 	return &Tokens{AccessToken: result.AccessToken, RefreshToken: result.RefreshToken, WhooshID: result.WhooshID}, nil
 }
 
-// Refresh exchanges a refresh token for a new session without the
-// password. Returns ErrUnauthorized if the refresh token is rejected
-// (expired or invalid) and the user needs to log in again; server
-// errors are returned as plain errors.
+// Refresh exchanges a refresh token for a new session; ErrUnauthorized
+// means the user needs to log in again.
 func (c *Client) Refresh(refreshToken string) (*Tokens, error) {
 	body, status, err := c.do(http.MethodGet, refreshURL, refreshToken, nil)
 	if err != nil {
@@ -195,7 +183,7 @@ func (c *Client) Refresh(refreshToken string) (*Tokens, error) {
 	return &Tokens{AccessToken: result.AccessToken, RefreshToken: result.RefreshToken, WhooshID: result.WhooshID}, nil
 }
 
-// GetActivities fetches all activities, paginated. Returns newest first.
+// GetActivities fetches all activities, newest first.
 func (c *Client) GetActivities(token string) ([]Activity, error) {
 	activitiesURL := activitiesBase + "rider/profile/activities"
 	var allActivities []Activity
@@ -241,9 +229,7 @@ func (c *Client) GetActivities(token string) ([]Activity, error) {
 	return allActivities, nil
 }
 
-// DownloadFitFile downloads the FIT file for a given activity and
-// returns the raw bytes. The API first returns a pre-signed S3 URL,
-// which is then fetched.
+// DownloadFitFile fetches an activity's FIT file via its pre-signed S3 URL.
 func (c *Client) DownloadFitFile(token, activityFileID string) ([]byte, error) {
 	downloadURL := activitiesBase + "rider/profile/download-activity-file"
 	payload := fmt.Sprintf(`{"fileId":"%s"}`, activityFileID)
@@ -286,8 +272,6 @@ func (c *Client) DownloadFitFile(token, activityFileID string) ([]byte, error) {
 	return fitData, nil
 }
 
-// do sends a request with an optional JSON body and bearer token and
-// returns the response body and status code.
 func (c *Client) do(method, url, token string, payload []byte) ([]byte, int, error) {
 	req, err := http.NewRequest(method, url, bytes.NewReader(payload))
 	if err != nil {

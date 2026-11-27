@@ -73,15 +73,12 @@ func (h *MyWhooshHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 
 var errMyWhooshNotConnected = errors.New("MyWhoosh not connected — connect first")
 
-// myWhooshRefreshMargin is how long before expiry the access token is
-// refreshed proactively. It lasts 15 days, so a day of margin is plenty.
+// myWhooshRefreshMargin is the proactive refresh window before access-token expiry.
 const myWhooshRefreshMargin = 24 * time.Hour
 
 // withMyWhooshToken calls fn with the user's MyWhoosh access token,
-// refreshing it first if it is about to expire, or after fn fails with
-// mywhoosh.ErrUnauthorized (then fn is retried once). If the refresh
-// token is rejected too, the stored tokens are deleted so the UI offers
-// to reconnect, and mywhoosh.ErrUnauthorized is returned.
+// refreshing proactively or after ErrUnauthorized (fn is retried once).
+// A rejected refresh deletes the stored tokens and returns ErrUnauthorized.
 func withMyWhooshToken(client *mywhoosh.Client, store *db.Store, userID int, fn func(accessToken string) error) error {
 	tokens, err := store.GetMyWhooshTokens(userID)
 	if err != nil {
@@ -115,9 +112,8 @@ func withMyWhooshToken(client *mywhoosh.Client, store *db.Store, userID int, fn 
 	return fn(tokens.AccessToken)
 }
 
-// refreshMyWhooshTokens exchanges the stored refresh token for a new
-// session and saves it. If there is no refresh token (stored before
-// refresh support) or it is rejected, the stored tokens are deleted.
+// refreshMyWhooshTokens exchanges the stored refresh token for a new session
+// and saves it; a missing or rejected refresh token deletes the stored tokens.
 func refreshMyWhooshTokens(client *mywhoosh.Client, store *db.Store, userID int, old *db.MyWhooshTokens) (*db.MyWhooshTokens, error) {
 	if old.RefreshToken == "" {
 		return nil, expireMyWhooshTokens(store, userID)
@@ -141,8 +137,7 @@ func refreshMyWhooshTokens(client *mywhoosh.Client, store *db.Store, userID int,
 	return tokens, nil
 }
 
-// expireMyWhooshTokens deletes a session that can no longer be
-// refreshed and returns mywhoosh.ErrUnauthorized.
+// expireMyWhooshTokens deletes an unrefreshable session and returns ErrUnauthorized.
 func expireMyWhooshTokens(store *db.Store, userID int) error {
 	if err := store.DeleteMyWhooshTokens(userID); err != nil {
 		log.Printf("delete expired mywhoosh tokens: %v", err)
