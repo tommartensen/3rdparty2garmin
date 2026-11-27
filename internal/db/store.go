@@ -367,6 +367,24 @@ func (s *Store) HasGarminTokens(userID int) bool {
 	return row.Scan(&x) == nil
 }
 
+// GarminUserIDs returns the ids of users with stored Garmin credentials.
+func (s *Store) GarminUserIDs() ([]int, error) {
+	rows, err := s.db.Query("SELECT user_id FROM garmin_tokens")
+	if err != nil {
+		return nil, fmt.Errorf("garmin user ids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (s *Store) MarkGarminUploaded(userID int, source, externalID string) error {
 	_, err := s.db.Exec(
 		"UPDATE workouts SET garmin_uploaded_at = ? WHERE user_id = ? AND source = ? AND external_id = ?",
