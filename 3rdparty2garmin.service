@@ -1,0 +1,24 @@
+[Unit]
+Description=3rdparty2garmin — sync Wahoo/MyWhoosh workouts to Garmin Connect
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=tommartensen
+Group=tommartensen
+WorkingDirectory=/home/tommartensen/3rdparty2garmin
+ExecStart=/home/tommartensen/3rdparty2garmin/3rdparty2garmin
+Restart=on-failure
+RestartSec=5
+
+# Hardening: read-only filesystem except the app directory, which needs
+# write access for the database, WAL files, and generated TLS certs.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/tommartensen/3rdparty2garmin
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
