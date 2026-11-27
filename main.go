@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -33,13 +34,15 @@ func main() {
 
 	clientID := requireEnv("WAHOO_CLIENT_ID")
 	clientSecret := requireEnv("WAHOO_CLIENT_SECRET")
+	baseURL := envDefault("BASE_URL", "https://localhost:8080")
+	listenAddr := envDefault("LISTEN_ADDR", ":8080")
 
 	store, err := db.New("3rdparty2garmin.db")
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
 
-	client := wahoo.NewClient(clientID, clientSecret, "https://localhost:8080")
+	client := wahoo.NewClient(clientID, clientSecret, baseURL)
 
 	funcMap := template.FuncMap{
 		"divf": func(a, b float64) float64 { return a / b },
@@ -77,12 +80,12 @@ func main() {
 	mux.HandleFunc("POST /workouts/upload-all", session.RequireAuth(garminHandler.UploadAll))
 	mux.HandleFunc("POST /workouts/{source}/{id}/upload", session.RequireAuth(garminHandler.Upload))
 
-	if err := ensureTLSCerts("cert.pem", "key.pem"); err != nil {
+	if err := ensureTLSCerts("cert.pem", "key.pem", baseURL); err != nil {
 		log.Fatalf("tls certs: %v", err)
 	}
 
-	log.Println("starting server on https://localhost:8080")
-	err = http.ListenAndServeTLS(":8080", "cert.pem", "key.pem", mux)
+	log.Printf("starting server on %s", baseURL)
+	err = http.ListenAndServeTLS(listenAddr, "cert.pem", "key.pem", mux)
 	// Close explicitly: log.Fatalf exits without running deferred calls.
 	if closeErr := store.Close(); closeErr != nil {
 		log.Printf("close database: %v", closeErr)
@@ -90,14 +93,23 @@ func main() {
 	log.Fatalf("server: %v", err)
 }
 
-// ensureTLSCerts generates a self-signed localhost certificate when the
-// PEM files are missing, so the standalone binary starts without manual
-// openssl steps. Existing files are left untouched.
-func ensureTLSCerts(certFile, keyFile string) error {
+// ensureTLSCerts generates a self-signed certificate for the configured
+// host when the PEM files are missing, so the standalone binary starts
+// without manual openssl steps. Existing files are left untouched.
+func ensureTLSCerts(certFile, keyFile, baseURL string) error {
 	_, certErr := os.Stat(certFile)
 	_, keyErr := os.Stat(keyFile)
 	if certErr == nil && keyErr == nil {
 		return nil
+	}
+
+	host := "localhost"
+	if u, err := url.Parse(baseURL); err == nil && u.Hostname() != "" {
+		host = u.Hostname()
+	}
+	dnsNames := []string{host}
+	if host != "localhost" {
+		dnsNames = append(dnsNames, "localhost")
 	}
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -110,12 +122,12 @@ func ensureTLSCerts(certFile, keyFile string) error {
 	}
 	tmpl := x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "localhost"},
+		Subject:      pkix.Name{CommonName: host},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().AddDate(10, 0, 0),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost"},
+		DNSNames:     dnsNames,
 		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
 	}
 	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &key.PublicKey, key)
@@ -135,8 +147,15 @@ func ensureTLSCerts(certFile, keyFile string) error {
 	if err := os.WriteFile(keyFile, keyPEM, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", keyFile, err)
 	}
-	log.Printf("generated self-signed TLS certificate for localhost (%s, %s)", certFile, keyFile)
+	log.Printf("generated self-signed TLS certificate for %s (%s, %s)", host, certFile, keyFile)
 	return nil
+}
+
+func envDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 func loadEnv(path string) {

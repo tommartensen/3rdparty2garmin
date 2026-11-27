@@ -22,6 +22,11 @@ WAHOO_CLIENT_ID=your_client_id
 WAHOO_CLIENT_SECRET=your_client_secret
 ```
 
+Optional: `BASE_URL` (default `https://localhost:8080`) sets the public
+URL used for the OAuth redirect and the self-signed certificate — set it
+when running on another domain, and update the Wahoo app's redirect URI
+to match. `LISTEN_ADDR` (default `:8080`) sets the bind address.
+
 ### Generate TLS Certificate
 
 The Wahoo OAuth redirect requires HTTPS. On first start the server
