@@ -24,7 +24,10 @@ WAHOO_CLIENT_SECRET=your_client_secret
 
 ### Generate TLS Certificate
 
-The Wahoo OAuth redirect requires HTTPS. Generate a self-signed certificate for local development:
+The Wahoo OAuth redirect requires HTTPS. On first start the server
+generates a self-signed localhost certificate (`cert.pem`, `key.pem`) if
+the files don't exist; to use your own instead, generate it before
+starting:
 
 ```sh
 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \

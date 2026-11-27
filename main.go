@@ -2,18 +2,31 @@ package main
 
 import (
 	"bufio"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"embed"
+	"encoding/pem"
 	"fmt"
 	"html/template"
 	"log"
+	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/tommartensen/3rdparty2garmin/internal/db"
 	"github.com/tommartensen/3rdparty2garmin/internal/handlers"
 	"github.com/tommartensen/3rdparty2garmin/internal/mywhoosh"
 	"github.com/tommartensen/3rdparty2garmin/internal/wahoo"
 )
+
+//go:embed templates
+var templateFS embed.FS
 
 func main() {
 	loadEnv(".env")
@@ -39,10 +52,10 @@ func main() {
 			return fmt.Sprintf("%dm", m)
 		},
 	}
-	loginTmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("templates/layout.html", "templates/login.html"))
-	workoutsTmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("templates/layout.html", "templates/workouts.html"))
-	garminLoginTmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("templates/layout.html", "templates/garmin_login.html"))
-	mywhooshLoginTmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("templates/layout.html", "templates/mywhoosh_login.html"))
+	loginTmpl := template.Must(template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/layout.html", "templates/login.html"))
+	workoutsTmpl := template.Must(template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/layout.html", "templates/workouts.html"))
+	garminLoginTmpl := template.Must(template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/layout.html", "templates/garmin_login.html"))
+	mywhooshLoginTmpl := template.Must(template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/layout.html", "templates/mywhoosh_login.html"))
 
 	session := handlers.NewSessionManager(clientSecret)
 	whoosh := mywhoosh.NewClient()
@@ -64,6 +77,10 @@ func main() {
 	mux.HandleFunc("POST /workouts/upload-all", session.RequireAuth(garminHandler.UploadAll))
 	mux.HandleFunc("POST /workouts/{source}/{id}/upload", session.RequireAuth(garminHandler.Upload))
 
+	if err := ensureTLSCerts("cert.pem", "key.pem"); err != nil {
+		log.Fatalf("tls certs: %v", err)
+	}
+
 	log.Println("starting server on https://localhost:8080")
 	err = http.ListenAndServeTLS(":8080", "cert.pem", "key.pem", mux)
 	// Close explicitly: log.Fatalf exits without running deferred calls.
@@ -71,6 +88,55 @@ func main() {
 		log.Printf("close database: %v", closeErr)
 	}
 	log.Fatalf("server: %v", err)
+}
+
+// ensureTLSCerts generates a self-signed localhost certificate when the
+// PEM files are missing, so the standalone binary starts without manual
+// openssl steps. Existing files are left untouched.
+func ensureTLSCerts(certFile, keyFile string) error {
+	_, certErr := os.Stat(certFile)
+	_, keyErr := os.Stat(keyFile)
+	if certErr == nil && keyErr == nil {
+		return nil
+	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("generate key: %w", err)
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return fmt.Errorf("generate serial: %w", err)
+	}
+	tmpl := x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: "localhost"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().AddDate(10, 0, 0),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:     []string{"localhost"},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &key.PublicKey, key)
+	if err != nil {
+		return fmt.Errorf("create certificate: %w", err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return fmt.Errorf("marshal key: %w", err)
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	if err := os.WriteFile(certFile, certPEM, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", certFile, err)
+	}
+	if err := os.WriteFile(keyFile, keyPEM, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", keyFile, err)
+	}
+	log.Printf("generated self-signed TLS certificate for localhost (%s, %s)", certFile, keyFile)
+	return nil
 }
 
 func loadEnv(path string) {
