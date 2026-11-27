@@ -55,8 +55,14 @@ if [ -n "$sum_cmd" ] && curl -fsSL -o "${tmpdir}/checksums.txt" "${base_url}/che
     # on the filename suffix and compare hashes directly.
     expected="$(grep "${file}\$" "${tmpdir}/checksums.txt" | awk '{print $1}')"
     actual="$($sum_cmd "${tmpdir}/${file}" | awk '{print $1}')"
-    if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+    if [ -z "$expected" ]; then
+        echo "error: no checksum entry for ${file} in checksums.txt" >&2
+        exit 1
+    fi
+    if [ "$expected" != "$actual" ]; then
         echo "error: checksum mismatch for ${file}" >&2
+        echo "  expected: ${expected}" >&2
+        echo "  actual:   ${actual:-<hash command produced nothing>}" >&2
         exit 1
     fi
     echo ">> checksum verified"
