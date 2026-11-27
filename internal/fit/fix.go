@@ -25,7 +25,9 @@ const (
 const (
 	garminManufacturer = typedef.ManufacturerGarmin   // 1
 	fenix6sProduct     = typedef.GarminProductFenix6s // 3288
-	fakeSerialNumber   = uint32(3420897194)
+	// FakeSerialNumber is the serial written into uploaded files; activities
+	// carrying it were uploaded by this app's current pipeline.
+	FakeSerialNumber = uint32(3420897194)
 )
 
 // Options controls source-specific FIT processing.
@@ -116,11 +118,11 @@ func avgU8(vals []uint8) uint8 {
 func spoofDevice(activity *filedef.Activity) {
 	activity.FileId.Manufacturer = garminManufacturer
 	activity.FileId.Product = fenix6sProduct.Uint16()
-	activity.FileId.SerialNumber = fakeSerialNumber
+	activity.FileId.SerialNumber = FakeSerialNumber
 
 	for _, di := range activity.DeviceInfos {
 		di.Manufacturer = garminManufacturer
 		di.Product = fenix6sProduct.Uint16()
-		di.SerialNumber = fakeSerialNumber
+		di.SerialNumber = FakeSerialNumber
 	}
 }
